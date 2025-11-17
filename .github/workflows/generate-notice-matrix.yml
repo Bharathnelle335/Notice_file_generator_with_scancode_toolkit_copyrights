@@ -1,0 +1,455 @@
+name: Generate NOTICE (matrix + ScanCode)
+
+on:
+  workflow_dispatch:
+    inputs:
+      sbom_paths:
+        description: "Comma-separated SBOM JSON paths (SPDX or CycloneDX)"
+        required: true
+        default: "sboms/spdx-lite.json,sboms/cyclonedx.json"
+      notice_title:
+        description: "Title for NOTICE.md"
+        required: false
+        default: "Open Source Notices"
+  push:
+    branches: [ main, master ]
+    paths:
+      - "sboms/**/*.json"
+      - "sbom*.json"
+
+jobs:
+  # ---------------------------------------------------------
+  # Job 1: Prepare dynamic matrix from the SBOMs
+  # ---------------------------------------------------------
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix_json: ${{ steps.mk.outputs.matrix_json }}
+      title:       ${{ steps.mk.outputs.title }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install parsers
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests packaging cyclonedx-python-lib spdx-tools
+
+      - name: Build matrix from SBOMs
+        id: mk
+        run: |
+          python - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+
+          NOASSERT={"NOASSERTION","NONE","",None}
+          def norm(s):
+              if s is None: return None
+              s=str(s).strip()
+              return None if (not s or s.upper() in NOASSERT) else " ".join(s.split())
+
+          def detect(doc):
+              if isinstance(doc, dict):
+                  if doc.get("bomFormat")=="CycloneDX" or "components" in doc: return "cdx"
+                  if doc.get("spdxVersion") or doc.get("SPDXID") or "packages" in doc or "files" in doc: return "spdx"
+              return "unknown"
+
+          def parse_spdx(doc):
+              res=[]
+              for p in doc.get("packages") or []:
+                  name=norm(p.get("name"))
+                  if not name: continue
+                  version=norm(p.get("versionInfo"))
+                  lic=norm(p.get("licenseConcluded")) or norm(p.get("licenseDeclared"))
+                  if not lic:
+                      infos=p.get("licenseInfoFromFiles") or []
+                      toks=sorted(set([norm(x) for x in infos if norm(x)]))
+                      lic=" AND ".join(toks) if toks else None
+                  homepage=norm(p.get("homepage"))
+                  dl=norm(p.get("downloadLocation"))
+                  url=dl or homepage
+                  purl=None
+                  for ref in p.get("externalRefs") or []:
+                      rtype=(ref.get("referenceType") or "").lower()
+                      loc=norm(ref.get("referenceLocator"))
+                      if "purl" in rtype and loc:
+                          purl=loc; break
+                  res.append({"name":name,"version":version,"license":lic,"url":url,"purl":purl})
+              return res
+
+          def parse_cdx(doc):
+              res=[]
+              for c in doc.get("components") or []:
+                  name=norm(c.get("name"))
+                  if not name: continue
+                  version=norm(c.get("version"))
+                  purl=norm(c.get("purl"))
+                  lic=None
+                  if c.get("licenses"):
+                      exprs=[norm(x.get("expression")) for x in c["licenses"] if isinstance(x,dict) and x.get("expression")]
+                      if exprs and exprs[0]: lic=exprs[0]
+                      else:
+                          ids=[]
+                          for entry in c["licenses"]:
+                              licd=entry.get("license") if isinstance(entry,dict) else None
+                              if isinstance(licd,dict):
+                                  lid=norm(licd.get("id")); lname=norm(licd.get("name"))
+                                  if lid: ids.append(lid)
+                                  elif lname: ids.append(lname)
+                          ids=sorted(set(ids))
+                          lic=" AND ".join(ids) if ids else None
+                  url=None
+                  for ref in c.get("externalReferences") or []:
+                      rtype=(ref.get("type") or "").lower(); u=norm(ref.get("url"))
+                      if rtype in {"website","vcs","distribution","documentation","release-notes"} and u:
+                          url=u; break
+                  res.append({"name":name,"version":version,"license":lic,"url":url,"purl":purl})
+              return res
+
+          sboms = os.environ.get("SBOMS","sboms/spdx-lite.json,sboms/cyclonedx.json").split(",")
+          comps=[]
+          for path in [s.strip() for s in sboms if s.strip()]:
+              with open(path,"r",encoding="utf-8") as f:
+                  doc=json.load(f)
+              kind=detect(doc)
+              if kind=="spdx": comps+=parse_spdx(doc)
+              elif kind=="cdx": comps+=parse_cdx(doc)
+
+          # de-dupe by purl else name@version
+          merged={}
+          for c in comps:
+              key=("purl",c["purl"]) if c.get("purl") else ("nv",f"{(c.get('name') or '').lower()}@{(c.get('version') or '').lower()}")
+              if key not in merged: merged[key]=c
+              else:
+                  for fld in ("license","url","version"):
+                      if not merged[key].get(fld) and c.get(fld): merged[key][fld]=c[fld]
+
+          items=list(merged.values())
+          # Build matrix JSON (use only include list – clean fan-out)
+          matrix={"include":[]}
+          for i,c in enumerate(items):
+              matrix["include"].append({
+                  "idx": i,
+                  "name": c.get("name"),
+                  "version": c.get("version") or "",
+                  "url": c.get("url") or "",
+                  "purl": c.get("purl") or "",
+                  "license": c.get("license") or ""
+              })
+
+          # emit outputs
+          matrix_json=json.dumps(matrix, ensure_ascii=False)
+          title=os.environ.get("TITLE","Open Source Notices")
+          # Write to GITHUB_OUTPUT
+          with open(os.environ["GITHUB_OUTPUT"],"a",encoding="utf-8") as out:
+              out.write(f"matrix_json={matrix_json}\n")
+              out.write(f"title={title}\n")
+          PY
+        env:
+          SBOMS: "${{ github.event.inputs.sbom_paths || 'sboms/spdx-lite.json,sboms/cyclonedx.json' }}"
+          TITLE: "${{ github.event.inputs.notice_title || 'Open Source Notices' }}"
+
+      - name: Show matrix size (summary)
+        run: |
+          echo "### Prepared components for scanning" >> $GITHUB_STEP_SUMMARY
+          echo "- Title: **${{ steps.mk.outputs.title }}**" >> $GITHUB_STEP_SUMMARY
+          python - <<'PY'
+          import json, os
+          m=json.loads(os.environ["M"])
+          count=len(m.get("include",[]))
+          print(f"echo '- Components to scan: **{count}**' >> $GITHUB_STEP_SUMMARY")
+          PY
+        env:
+          M: ${{ steps.mk.outputs.matrix_json }}
+
+  # ---------------------------------------------------------
+  # Job 2: Scan (matrix fan-out) – one component per job
+  # ---------------------------------------------------------
+  scan:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Dynamic matrix from prepare job (JSON → object)
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix_json) }}
+      # Optional: throttle parallelism
+      max-parallel: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.idx }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install ScanCode Toolkit
+        run: |
+          python -m pip install --upgrade pip
+          pip install scancode-toolkit requests packaging
+
+      - name: Download source/archive for component
+        id: dl
+        run: |
+          python - <<'PY'
+          import os, re, io, tarfile, zipfile, requests
+          from pathlib import Path
+          REQ_TIMEOUT=45
+          name=os.environ["NAME"]
+          version=os.environ["VERSION"] or None
+          purl=os.environ["PURL"] or None
+          url=os.environ["URL"] or None
+          work=Path(".scancode_work")/name.replace("/","_")
+          work.mkdir(parents=True, exist_ok=True)
+          def get(url):
+              r=requests.get(url,timeout=REQ_TIMEOUT)
+              r.raise_for_status(); return r.content
+          fn=None
+          # PURL routing (subset identical to your app.py logic)
+          if purl and purl.startswith("pkg:npm/"):
+              pkg=purl.split("/",2)[-1].split("@")[0]
+              ver=version or (purl.split("@")[-1] if "@" in purl else None)
+              meta=get(f"https://registry.npmjs.org/{pkg}/{ver or 'latest'}")
+              import json
+              tarball=json.loads(meta)["dist"]["tarball"]
+              buf=get(tarball); fn=work/f"{pkg}-{ver or 'latest'}.tgz"; fn.write_bytes(buf)
+          elif purl and purl.startswith("pkg:pypi/"):
+              pkg=purl.split("/",2)[-1].split("@")[0]
+              ver=version or (purl.split("@")[-1] if "@" in purl else None)
+              import json
+              meta=json.loads(get(f"https://pypi.org/pypi/{pkg}/{ver or ''}/json").decode("utf-8"))
+              urls=meta.get("urls",[])
+              sdist=next((u for u in urls if u.get("packagetype")=="sdist"), None) or (urls[0] if urls else None)
+              if sdist:
+                  buf=get(sdist["url"]); fn=work/sdist["filename"]; fn.write_bytes(buf)
+          elif purl and purl.startswith("pkg:maven/") and version:
+              rest=purl[len("pkg:maven/"):]
+              coords=rest.split("@")[0].split("/")
+              if len(coords)>=2:
+                  group,artifact=coords[0],coords[1]
+                  base=f"https://repo1.maven.org/maven2/{group.replace('.','/')}/{artifact}/{version}"
+                  for suffix in (f"{artifact}-{version}-sources.jar", f"{artifact}-{version}.jar"):
+                      u=f"{base}/{suffix}"
+                      r=requests.get(u,timeout=REQ_TIMEOUT)
+                      if r.status_code==200:
+                          fn=work/suffix; fn.write_bytes(r.content); break
+          elif purl and purl.startswith("pkg:nuget/") and version:
+              pkg=purl.split("/",2)[-1].split("@")[0]
+              lower=pkg.lower()
+              u=f"https://api.nuget.org/v3-flatcontainer/{lower}/{version}/{lower}.{version}.nupkg"
+              r=requests.get(u,timeout=REQ_TIMEOUT)
+              if r.status_code==200:
+                  fn=work/f"{lower}.{version}.nupkg"; fn.write_bytes(r.content)
+          elif purl and purl.startswith("pkg:gem/") and version:
+              pkg=purl.split("/",2)[-1].split("@")[0]
+              u=f"https://rubygems.org/downloads/{pkg}-{version}.gem"
+              r=requests.get(u,timeout=REQ_TIMEOUT)
+              if r.status_code==200:
+                  fn=work/f"{pkg}-{version}.gem"; fn.write_bytes(r.content)
+          elif purl and purl.startswith("pkg:golang/") and version:
+              mod=purl[len("pkg:golang/"):].split("@")[0]
+              u=f"https://proxy.golang.org/{mod}/@v/{version}.zip"
+              r=requests.get(u,timeout=REQ_TIMEOUT)
+              if r.status_code==200:
+                  fn=work/f"{mod.replace('/','_')}@{version}.zip"; fn.write_bytes(r.content)
+
+          # GitHub fallback: main branch zip via codeload
+          if fn is None and url:
+              m=re.match(r"https?://github\.com/([^/]+)/([^/?#]+)", url)
+              if m:
+                  org, repo = m.groups()
+                  zurl = f"https://codeload.github.com/{org}/{repo}/zip/refs/heads/main"
+                  r=requests.get(zurl,timeout=REQ_TIMEOUT)
+                  if r.status_code==200:
+                      fn=work/f"{repo}-main.zip"; fn.write_bytes(r.content)
+
+          # Export path for next steps
+          p = str(fn) if fn else ""
+          print(f"archive={p}")
+          print(f"workdir={str(work)}")
+          with open(os.environ["GITHUB_OUTPUT"],"a") as out:
+              out.write(f"archive={p}\n")
+              out.write(f"workdir={str(work)}\n")
+          PY
+        env:
+          NAME:    ${{ matrix.name }}
+          VERSION: ${{ matrix.version }}
+          URL:     ${{ matrix.url }}
+          PURL:    ${{ matrix.purl }}
+
+      - name: Extract archive
+        id: ex
+        if: steps.dl.outputs.archive != ''
+        run: |
+          python - <<'PY'
+          import os, tarfile, zipfile
+          from pathlib import Path
+          arc = Path(os.environ["ARC"])
+          out = Path(os.environ["WORK"]) / "src"
+          out.mkdir(parents=True, exist_ok=True)
+          ok=False
+          try:
+              if arc.suffix in (".tgz",".gz",".tar"):
+                  with tarfile.open(arc,"r:*") as tf: tf.extractall(out); ok=True
+              else:
+                  with zipfile.ZipFile(arc) as zf: zf.extractall(out); ok=True
+          except Exception:
+              ok=False
+          with open(os.environ["GITHUB_OUTPUT"],"a") as gh:
+              gh.write(f"src={str(out) if ok else ''}\n")
+          PY
+        env:
+          ARC:  ${{ steps.dl.outputs.archive }}
+          WORK: ${{ steps.dl.outputs.workdir }}
+
+      - name: Run ScanCode
+        if: steps.ex.outputs.src != ''
+        run: |
+          scancode -cl --license-text --json-pp "${{ steps.dl.outputs.workdir }}/scan.json" "${{ steps.ex.outputs.src }}"
+
+      - name: Upload scan artifact (v4)
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-${{ matrix.idx }}-${{ matrix.name }}
+          path: |
+            ${{ steps.dl.outputs.workdir }}/scan.json
+          if-no-files-found: warn
+
+      - name: Job summary (component)
+        run: |
+          echo "### Scan finished: ${{ matrix.name }} ${{ matrix.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: ${{ matrix.url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- PURL: \`${{ matrix.purl }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ---------------------------------------------------------
+  # Job 3: Merge (fan-in) – build NOTICE.md & write summary
+  # ---------------------------------------------------------
+  merge:
+    needs: [prepare, scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all scan artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "scan-*"
+          merge-multiple: true
+          path: scans
+      # Artifact v4 docs & patterns/merge-multiple: [2](https://github.blog/changelog/2023-12-14-github-actions-artifacts-v4-is-now-generally-available/)[1](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflow-artifacts)
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install helper libs
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests packaging
+
+      - name: Build NOTICE.md from per-component scans
+        id: build
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          title = "${{ needs.prepare.outputs.title }}"
+          scans_dir = Path("scans")
+          rows = []
+          license_texts = {}
+
+          # derive component meta from artifact names
+          for p in scans_dir.glob("**/scan.json"):
+              data = json.loads(p.read_text(encoding="utf-8"))
+              # Try to infer component name/version from path (uploaded as scan-<idx>-<name>)
+              # Fallback: use file counts in JSON
+              comp_display = p.parts[-2] if p.parent != scans_dir else "component"
+              name = comp_display.split("-",2)[-1] if comp_display.startswith("scan-") else comp_display
+
+              # collect copyrights & license texts
+              cps=[]
+              ltexts={}
+              for f in data.get("files",[]):
+                  for cpr in f.get("copyrights",[]):
+                      v=cpr.get("value")
+                      if v: cps.append(v.strip())
+                  for det in f.get("license_detections",[]):
+                      key = det.get("license_expression_spdx") or det.get("license_expression") or det.get("license_key")
+                      for m in det.get("matches",[]) or []:
+                          t=(m.get("matched_text") or "").strip()
+                          if t and key and key not in ltexts:
+                              ltexts[key]=t
+
+              # compact unique lines
+              seen=set(); cps_u=[]
+              for ln in cps:
+                  if ln not in seen:
+                      seen.add(ln); cps_u.append(ln)
+              rows.append({"name":name, "version":"", "url":"", "license":"", "copyright":"\n".join(cps_u[:25])})
+              for k,v in ltexts.items():
+                  license_texts.setdefault(k, v)
+
+          # Render NOTICE
+          out=[]
+          out.append(f"# {title}\n")
+          for r in rows:
+              out.append(f"### {r['name']}" + (f" {r['version']}" if r.get('version') else ""))
+              if r.get("url"): out.append(f"- **URL:** {r['url']}")
+              if r.get("license"): out.append(f"- **License:** {r['license']}")
+              if r.get("copyright"):
+                  out.append(f"- **Copyright:** {r['copyright']}")
+              out.append("")
+
+          if license_texts:
+              out.append("\n## License Texts\n")
+              for lid,text in sorted(license_texts.items()):
+                  out.append(f"### {lid}\n```text\n{text.strip()}\n```\n")
+
+          Path("NOTICE.md").write_text(("\n".join(out)).rstrip()+"\n", encoding="utf-8")
+
+          # write counts for summary
+          print(f"rows={len(rows)}")
+          with open(os.environ["GITHUB_OUTPUT"],"a") as gh:
+              gh.write(f"count={len(rows)}\n")
+          PY
+
+      - name: Upload NOTICE.md
+        uses: actions/upload-artifact@v4
+        with:
+          name: notice-md
+          path: NOTICE.md
+
+      - name: Commit NOTICE.md back (optional)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        run: |
+          set -e
+          if [ -f NOTICE.md ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add NOTICE.md
+            git diff --cached --quiet || git commit -m "chore: update NOTICE.md (matrix ScanCode)"
+            git push
+          fi
+
+      - name: Run summary
+        run: |
+          echo "## NOTICE build summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Components scanned: **${{ steps.build.outputs.count }}**" >> $GITHUB_STEP_SUMMARY
+          echo "- Parallel jobs used (max): **12**" >> $GITHUB_STEP_SUMMARY
+          echo "- See the **Artifacts** section for per-component scans and the merged NOTICE.md." >> $GITHUB_STEP_SUMMARY
