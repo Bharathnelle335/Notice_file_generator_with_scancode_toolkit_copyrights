@@ -1,0 +1,522 @@
+{
+    "spdxVersion": "SPDX-2.2",
+    "dataLicense": "CC0-1.0",
+    "SPDXID": "SPDXRef-DOCUMENT",
+    "name": "SBOM for nanos-0.1.54",
+    "documentNamespace": "https://spdx.org/spdxdocs/nanos-0.1.54-806995894745a34531521dce82250a5e174d7e5a21d431c6d0c76a0b8054aeb1",
+    "creationInfo": {
+        "creators": [
+            "Tool: EY SBOM Workbench-1.21.0",
+            "Person: YR399SA",
+            "Organization: Ernst & Young"
+        ],
+        "created": "2025-11-17T07:24:21Z",
+        "comment": "SBOM Build information - SBOM Type: Build"
+    },
+    "packages": [
+        {
+            "name": "pkg:github.com/B-Con/crypto-algorithms",
+            "SPDXID": "SPDXRef-808d3e5f52f1d2518b02aaca4af9b177",
+            "versionInfo": "unknown",
+            "downloadLocation": "https://github.com/B-Con/crypto-algorithms",
+            "filesAnalyzed": false,
+            "supplier": "Organization: B-Con",
+            "homepage": "https://github.com/B-Con/crypto-algorithms",
+            "licenseDeclared": "LicenseRef-public-domain",
+            "licenseConcluded": "LicenseRef-public-domain",
+            "copyrightText": "ZnJlZSBmb3IgdXNlIGJ5IGFueW9uZSBmb3IgYW55IHB1cnBvc2Ugd2l0aG91dCByZXN0cmljdGlvbiB1bmRlciBjb3B5cmlnaHQgbGF3LiBQdWJsaWMgZG9tYWluIGlzIHRoZSBwdXJlc3QgZm9ybSBvZiBvcGVuL2ZyZWUsIHNpbmNlIG5vIG9uZSBvd25zIG9yIGNvbnRyb2xzIHRoZSBtYXRlcmlhbCBpbiBhbnkgd2F5Lg==",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:github.com/B-Con/crypto-algorithms",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:github/amzn/amzn-drivers",
+            "SPDXID": "SPDXRef-55cc273611bd107541e4d1337e79e185",
+            "versionInfo": "unknown",
+            "downloadLocation": "https://github.com/amzn/amzn-drivers",
+            "filesAnalyzed": false,
+            "supplier": "Organization: amzn",
+            "homepage": "https://github.com/amzn/amzn-drivers",
+            "licenseDeclared": "BSD-2-Clause",
+            "licenseConcluded": "BSD-2-Clause AND BSD-3-Clause",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:github/amzn/amzn-drivers",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:github/barisione/clang-format-hooks",
+            "SPDXID": "SPDXRef-006ad0a3a243d01624fa3b71d7dbfb65",
+            "versionInfo": "unknown",
+            "downloadLocation": "https://github.com/barisione/clang-format-hooks",
+            "filesAnalyzed": false,
+            "supplier": "Organization: barisione",
+            "homepage": "https://github.com/barisione/clang-format-hooks",
+            "licenseDeclared": "MIT",
+            "licenseConcluded": "MIT",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:github/barisione/clang-format-hooks",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:git.dpdk.org/dpdk/tree/drivers/net/vmxnet3",
+            "SPDXID": "SPDXRef-05fda468e239d68e38a4aaf3c8ca8d75",
+            "versionInfo": "unknown",
+            "downloadLocation": "https://git.dpdk.org/dpdk/tree/drivers/net/vmxnet3",
+            "filesAnalyzed": false,
+            "supplier": "Organization: dpdk/tree/drivers/net",
+            "homepage": "https://git.dpdk.org/dpdk/tree/drivers/net/vmxnet3",
+            "licenseDeclared": "BSD-3-Clause",
+            "licenseConcluded": "BSD-3-Clause",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:git.dpdk.org/dpdk/tree/drivers/net/vmxnet3",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:github.com/freebsd/freebsd-src",
+            "SPDXID": "SPDXRef-2a4c10f5864a21ce858309cfcf4929b6",
+            "versionInfo": "unknown",
+            "downloadLocation": "https://github.com/freebsd/freebsd-src/",
+            "filesAnalyzed": false,
+            "supplier": "Organization: freebsd",
+            "homepage": "https://github.com/freebsd/freebsd-src/",
+            "licenseDeclared": "BSD-3-Clause",
+            "licenseConcluded": "BSD-2-Clause AND BSD-3-Clause",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:github.com/freebsd/freebsd-src",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:golang/github.com/go-errors/errors",
+            "SPDXID": "SPDXRef-d2a32107c567a7adf2e2682dba5e24b7",
+            "versionInfo": "v1.0.1",
+            "downloadLocation": "NOASSERTION",
+            "filesAnalyzed": false,
+            "supplier": "Organization: github.com/go-errors",
+            "homepage": "NOASSERTION",
+            "licenseDeclared": "MIT",
+            "licenseConcluded": "MIT",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:golang/github.com/go-errors/errors",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:golang/github.com/mattn/go-runewidth",
+            "SPDXID": "SPDXRef-1340185405d35cec47cef4dfff6d037d",
+            "versionInfo": "v0.0.10",
+            "downloadLocation": "NOASSERTION",
+            "filesAnalyzed": false,
+            "supplier": "Organization: github.com/mattn",
+            "homepage": "NOASSERTION",
+            "licenseDeclared": "MIT",
+            "licenseConcluded": "MIT",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:golang/github.com/mattn/go-runewidth",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:golang/github.com/mitchellh/colorstring",
+            "SPDXID": "SPDXRef-e6d21f41bfa9014833ab05c869b2787b",
+            "versionInfo": "v0.0.0-20190213212951-d06e56a500db",
+            "downloadLocation": "NOASSERTION",
+            "filesAnalyzed": false,
+            "supplier": "Organization: github.com/mitchellh",
+            "homepage": "NOASSERTION",
+            "licenseDeclared": "MIT",
+            "licenseConcluded": "MIT",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:golang/github.com/mitchellh/colorstring",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:golang/github.com/olekukonko/tablewriter",
+            "SPDXID": "SPDXRef-799a45002c1bf15fc597aa7142f9b70f",
+            "versionInfo": "v0.0.4",
+            "downloadLocation": "NOASSERTION",
+            "filesAnalyzed": false,
+            "supplier": "Organization: github.com/olekukonko",
+            "homepage": "NOASSERTION",
+            "licenseDeclared": "MIT",
+            "licenseConcluded": "MIT",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:golang/github.com/olekukonko/tablewriter",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:golang/github.com/rivo/uniseg",
+            "SPDXID": "SPDXRef-36b69386308d3622dbe9b90eceb11f2c",
+            "versionInfo": "v0.2.0",
+            "downloadLocation": "NOASSERTION",
+            "filesAnalyzed": false,
+            "supplier": "Organization: github.com/rivo",
+            "homepage": "NOASSERTION",
+            "licenseDeclared": "MIT",
+            "licenseConcluded": "MIT",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:golang/github.com/rivo/uniseg",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:golang/github.com/schollz/progressbar/v3",
+            "SPDXID": "SPDXRef-a56231b9aac8d5046b4c70bfaedda699",
+            "versionInfo": "v3.7.3",
+            "downloadLocation": "NOASSERTION",
+            "filesAnalyzed": false,
+            "supplier": "Organization: github.com/schollz/progressbar",
+            "homepage": "NOASSERTION",
+            "licenseDeclared": "MIT",
+            "licenseConcluded": "MIT",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:golang/github.com/schollz/progressbar/v3",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:golang/golang.org/x/crypto",
+            "SPDXID": "SPDXRef-e30cabfb72ee4065fa4965b34f6107ee",
+            "versionInfo": "v0.35.0",
+            "downloadLocation": "NOASSERTION",
+            "filesAnalyzed": false,
+            "supplier": "Organization: golang.org/x",
+            "homepage": "NOASSERTION",
+            "licenseDeclared": "BSD-3-Clause",
+            "licenseConcluded": "BSD-3-Clause",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:golang/golang.org/x/crypto",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:golang/golang.org/x/sys",
+            "SPDXID": "SPDXRef-fb5a4a514ad481d109f0c14db95b15aa",
+            "versionInfo": "v0.30.0",
+            "downloadLocation": "NOASSERTION",
+            "filesAnalyzed": false,
+            "supplier": "Organization: golang.org/x",
+            "homepage": "NOASSERTION",
+            "licenseDeclared": "BSD-3-Clause",
+            "licenseConcluded": "BSD-3-Clause",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:golang/golang.org/x/sys",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:golang/golang.org/x/term",
+            "SPDXID": "SPDXRef-4f5853879546d94f9db06991d0761508",
+            "versionInfo": "v0.29.0",
+            "downloadLocation": "NOASSERTION",
+            "filesAnalyzed": false,
+            "supplier": "Organization: golang.org/x",
+            "homepage": "NOASSERTION",
+            "licenseDeclared": "BSD-3-Clause",
+            "licenseConcluded": "BSD-3-Clause",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:golang/golang.org/x/term",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:github.com/lwip-tcpip/lwip",
+            "SPDXID": "SPDXRef-e4bfc68f15ecdaf2e587524303031eaf",
+            "versionInfo": "unknown",
+            "downloadLocation": "https://github.com/lwip-tcpip/lwip",
+            "filesAnalyzed": false,
+            "supplier": "Organization: lwip-tcpip",
+            "homepage": "https://github.com/lwip-tcpip/lwip",
+            "licenseDeclared": "BSD-3-Clause",
+            "licenseConcluded": "BSD-3-Clause",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:github.com/lwip-tcpip/lwip",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:github/nanovms/nanos",
+            "SPDXID": "SPDXRef-f77d0418176c1126658affde7e38317f",
+            "versionInfo": "0.1.54",
+            "downloadLocation": "https://github.com/nanovms/nanos",
+            "filesAnalyzed": false,
+            "supplier": "Organization: nanovms",
+            "homepage": "https://github.com/nanovms/nanos",
+            "licenseDeclared": "Apache-2.0",
+            "licenseConcluded": "Apache-2.0",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:github/nanovms/nanos",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:github/starfive-tech/opensbi",
+            "SPDXID": "SPDXRef-1b9664ae8a5a6c4ddc04f416429d682f",
+            "versionInfo": "unknown",
+            "downloadLocation": "https://github.com/starfive-tech/opensbi",
+            "filesAnalyzed": false,
+            "supplier": "Organization: starfive-tech",
+            "homepage": "https://github.com/starfive-tech/opensbi",
+            "licenseDeclared": "BSD-2-Clause",
+            "licenseConcluded": "BSD-2-Clause",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:github/starfive-tech/opensbi",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:github.com/torvalds/linux",
+            "SPDXID": "SPDXRef-da9baf8ec1fc557918bed49f3b83cfee",
+            "versionInfo": "unknown",
+            "downloadLocation": "https://github.com/torvalds/linux/",
+            "filesAnalyzed": false,
+            "supplier": "Organization: torvalds",
+            "homepage": "https://github.com/torvalds/linux/",
+            "licenseDeclared": "GPL-2.0-only",
+            "licenseConcluded": "GPL-2.0-only",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:github.com/torvalds/linux",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        },
+        {
+            "name": "pkg:github/xen-project/xen",
+            "SPDXID": "SPDXRef-72462888c2d641f382f3d623aed68466",
+            "versionInfo": "unknown",
+            "downloadLocation": "https://github.com/xen-project/xen",
+            "filesAnalyzed": false,
+            "supplier": "Organization: xen-project",
+            "homepage": "https://github.com/xen-project/xen",
+            "licenseDeclared": "MIT",
+            "licenseConcluded": "MIT",
+            "copyrightText": "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceLocator": "pkg:github/xen-project/xen",
+                    "referenceType": "purl"
+                }
+            ],
+            "checksums": [
+                {
+                    "algorithm": "MD5",
+                    "checksumValue": "00000000000000000000000000000000"
+                }
+            ]
+        }
+    ],
+    "documentDescribes": [
+        "SPDXRef-808d3e5f52f1d2518b02aaca4af9b177",
+        "SPDXRef-55cc273611bd107541e4d1337e79e185",
+        "SPDXRef-006ad0a3a243d01624fa3b71d7dbfb65",
+        "SPDXRef-05fda468e239d68e38a4aaf3c8ca8d75",
+        "SPDXRef-2a4c10f5864a21ce858309cfcf4929b6",
+        "SPDXRef-d2a32107c567a7adf2e2682dba5e24b7",
+        "SPDXRef-1340185405d35cec47cef4dfff6d037d",
+        "SPDXRef-e6d21f41bfa9014833ab05c869b2787b",
+        "SPDXRef-799a45002c1bf15fc597aa7142f9b70f",
+        "SPDXRef-36b69386308d3622dbe9b90eceb11f2c",
+        "SPDXRef-a56231b9aac8d5046b4c70bfaedda699",
+        "SPDXRef-e30cabfb72ee4065fa4965b34f6107ee",
+        "SPDXRef-fb5a4a514ad481d109f0c14db95b15aa",
+        "SPDXRef-4f5853879546d94f9db06991d0761508",
+        "SPDXRef-e4bfc68f15ecdaf2e587524303031eaf",
+        "SPDXRef-f77d0418176c1126658affde7e38317f",
+        "SPDXRef-1b9664ae8a5a6c4ddc04f416429d682f",
+        "SPDXRef-da9baf8ec1fc557918bed49f3b83cfee",
+        "SPDXRef-72462888c2d641f382f3d623aed68466"
+    ],
+    "hasExtractedLicensingInfos": [
+        {
+            "licenseId": "LicenseRef-public-domain",
+            "name": "public domain",
+            "extractedText": "Detected license, please review component source code.",
+            "comment": "Detected license ."
+        }
+    ]
+}

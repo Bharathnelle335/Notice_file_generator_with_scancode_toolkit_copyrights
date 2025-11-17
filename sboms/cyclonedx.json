@@ -1,0 +1,573 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2025-11-17T07:23:54.337Z",
+    "authors": [
+      {
+        "name": "Ernst & Young",
+        "email": "info@scanoss.com"
+      }
+    ],
+    "component": {
+      "type": "application",
+      "name": "nanos-0.1.54",
+      "version": "NOASSERTION",
+      "bom-ref": "BomRef.6kb6uqnf3b.sh4u83r1bv"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "pkg:golang/github.com/mattn/go-runewidth",
+      "version": "v0.0.10",
+      "bom-ref": "BomRef.28jku8eedeo.1nqpsbbivlo",
+      "publisher": "github.com/mattn",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:golang/github.com/mattn/go-runewidth"
+    },
+    {
+      "type": "library",
+      "name": "pkg:git.dpdk.org/dpdk/tree/drivers/net/vmxnet3",
+      "version": "unknown",
+      "bom-ref": "BomRef.2bqnt9fgiu8.tj2q4j8ll6o",
+      "publisher": "dpdk/tree/drivers/net",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:git.dpdk.org/dpdk/tree/drivers/net/vmxnet3",
+      "externalReferences": [
+        {
+          "url": "https://git.dpdk.org/dpdk/tree/drivers/net/vmxnet3",
+          "type": "website"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "pkg:golang/github.com/rivo/uniseg",
+      "version": "v0.2.0",
+      "bom-ref": "BomRef.2hk3evj6438.b4pe4sao84g",
+      "publisher": "github.com/rivo",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:golang/github.com/rivo/uniseg"
+    },
+    {
+      "type": "library",
+      "name": "pkg:golang/golang.org/x/term",
+      "version": "v0.29.0",
+      "bom-ref": "BomRef.3f1p0t5qf48.78kdliv11jg",
+      "publisher": "golang.org/x",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/term"
+    },
+    {
+      "type": "library",
+      "name": "pkg:golang/github.com/mitchellh/colorstring",
+      "version": "v0.0.0-20190213212951-d06e56a500db",
+      "bom-ref": "BomRef.4orn8dbehc8.03696u5g61",
+      "publisher": "github.com/mitchellh",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:golang/github.com/mitchellh/colorstring"
+    },
+    {
+      "type": "library",
+      "name": "pkg:github.com/B-Con/crypto-algorithms",
+      "version": "unknown",
+      "bom-ref": "BomRef.8lhs2a3o8mo.i55igo62ne",
+      "publisher": "B-Con",
+      "licenses": [
+        {
+          "license": {
+            "name": "LicenseRef-public-domain"
+          }
+        },
+        {
+          "license": {
+            "name": "LicenseRef-public-domain"
+          }
+        }
+      ],
+      "purl": "pkg:github.com/B-Con/crypto-algorithms",
+      "externalReferences": [
+        {
+          "url": "https://github.com/B-Con/crypto-algorithms",
+          "type": "website"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "pkg:github/xen-project/xen",
+      "version": "unknown",
+      "bom-ref": "BomRef.92jcou4b6j8.fb9jm5rcc3g",
+      "publisher": "xen-project",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:github/xen-project/xen",
+      "externalReferences": [
+        {
+          "url": "https://github.com/xen-project/xen",
+          "type": "website"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "pkg:golang/github.com/schollz/progressbar/v3",
+      "version": "v3.7.3",
+      "bom-ref": "BomRef.9id740s10dg.9fklhf43gg8",
+      "publisher": "github.com/schollz/progressbar",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:golang/github.com/schollz/progressbar/v3"
+    },
+    {
+      "type": "library",
+      "name": "pkg:golang/golang.org/x/crypto",
+      "version": "v0.35.0",
+      "bom-ref": "BomRef.ahds99ihrdg.mavv2mgqok8",
+      "publisher": "golang.org/x",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/crypto"
+    },
+    {
+      "type": "library",
+      "name": "pkg:github.com/lwip-tcpip/lwip",
+      "version": "unknown",
+      "bom-ref": "BomRef.bgoulutlc5o.85so4jm10b",
+      "publisher": "lwip-tcpip",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:github.com/lwip-tcpip/lwip",
+      "externalReferences": [
+        {
+          "url": "https://github.com/lwip-tcpip/lwip",
+          "type": "website"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "pkg:golang/golang.org/x/sys",
+      "version": "v0.30.0",
+      "bom-ref": "BomRef.cm2lu1m26d.8gdu69i29no",
+      "publisher": "golang.org/x",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/sys"
+    },
+    {
+      "type": "library",
+      "name": "pkg:github/amzn/amzn-drivers",
+      "version": "unknown",
+      "bom-ref": "BomRef.esbkehjvh1o.p3l6gnbct28",
+      "publisher": "amzn",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "BSD-2-Clause",
+            "acknowledgement": "concluded"
+          }
+        },
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:github/amzn/amzn-drivers",
+      "externalReferences": [
+        {
+          "url": "https://github.com/amzn/amzn-drivers",
+          "type": "website"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "pkg:golang/github.com/go-errors/errors",
+      "version": "v1.0.1",
+      "bom-ref": "BomRef.helpj2rjecg.15lq45lt1v",
+      "publisher": "github.com/go-errors",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:golang/github.com/go-errors/errors"
+    },
+    {
+      "type": "library",
+      "name": "pkg:github/barisione/clang-format-hooks",
+      "version": "unknown",
+      "bom-ref": "BomRef.j2rngjkk24o.r2t6q4eel88",
+      "publisher": "barisione",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:github/barisione/clang-format-hooks",
+      "externalReferences": [
+        {
+          "url": "https://github.com/barisione/clang-format-hooks",
+          "type": "website"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "pkg:github/starfive-tech/opensbi",
+      "version": "unknown",
+      "bom-ref": "BomRef.jquvveqmoe8.l40ra1sl1vo",
+      "publisher": "starfive-tech",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "BSD-2-Clause",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:github/starfive-tech/opensbi",
+      "externalReferences": [
+        {
+          "url": "https://github.com/starfive-tech/opensbi",
+          "type": "website"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "pkg:github.com/freebsd/freebsd-src",
+      "version": "unknown",
+      "bom-ref": "BomRef.ou6bksro6do.h6fbqhdfc78",
+      "publisher": "freebsd",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause",
+            "acknowledgement": "concluded"
+          }
+        },
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:github.com/freebsd/freebsd-src",
+      "externalReferences": [
+        {
+          "url": "https://github.com/freebsd/freebsd-src/",
+          "type": "website"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "pkg:github.com/torvalds/linux",
+      "version": "unknown",
+      "bom-ref": "BomRef.pkgd7t9p0lo.n71rveu5qr8",
+      "publisher": "torvalds",
+      "licenses": [
+        {
+          "license": {
+            "id": "GPL-2.0-only",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "GPL-2.0-only",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:github.com/torvalds/linux",
+      "externalReferences": [
+        {
+          "url": "https://github.com/torvalds/linux/",
+          "type": "website"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "pkg:golang/github.com/olekukonko/tablewriter",
+      "version": "v0.0.4",
+      "bom-ref": "BomRef.rqmrfs5cgu.enrcalpf3mo",
+      "publisher": "github.com/olekukonko",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "MIT",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:golang/github.com/olekukonko/tablewriter"
+    },
+    {
+      "type": "library",
+      "name": "pkg:github/nanovms/nanos",
+      "version": "0.1.54",
+      "bom-ref": "BomRef.utg6fl2g0eg.mhrdg16upl8",
+      "publisher": "nanovms",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0",
+            "acknowledgement": "declared"
+          }
+        },
+        {
+          "license": {
+            "id": "Apache-2.0",
+            "acknowledgement": "concluded"
+          }
+        }
+      ],
+      "purl": "pkg:github/nanovms/nanos",
+      "externalReferences": [
+        {
+          "url": "https://github.com/nanovms/nanos",
+          "type": "website"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "BomRef.28jku8eedeo.1nqpsbbivlo"
+    },
+    {
+      "ref": "BomRef.2bqnt9fgiu8.tj2q4j8ll6o"
+    },
+    {
+      "ref": "BomRef.2hk3evj6438.b4pe4sao84g"
+    },
+    {
+      "ref": "BomRef.3f1p0t5qf48.78kdliv11jg"
+    },
+    {
+      "ref": "BomRef.4orn8dbehc8.03696u5g61"
+    },
+    {
+      "ref": "BomRef.6kb6uqnf3b.sh4u83r1bv"
+    },
+    {
+      "ref": "BomRef.8lhs2a3o8mo.i55igo62ne"
+    },
+    {
+      "ref": "BomRef.92jcou4b6j8.fb9jm5rcc3g"
+    },
+    {
+      "ref": "BomRef.9id740s10dg.9fklhf43gg8"
+    },
+    {
+      "ref": "BomRef.ahds99ihrdg.mavv2mgqok8"
+    },
+    {
+      "ref": "BomRef.bgoulutlc5o.85so4jm10b"
+    },
+    {
+      "ref": "BomRef.cm2lu1m26d.8gdu69i29no"
+    },
+    {
+      "ref": "BomRef.esbkehjvh1o.p3l6gnbct28"
+    },
+    {
+      "ref": "BomRef.helpj2rjecg.15lq45lt1v"
+    },
+    {
+      "ref": "BomRef.j2rngjkk24o.r2t6q4eel88"
+    },
+    {
+      "ref": "BomRef.jquvveqmoe8.l40ra1sl1vo"
+    },
+    {
+      "ref": "BomRef.ou6bksro6do.h6fbqhdfc78"
+    },
+    {
+      "ref": "BomRef.pkgd7t9p0lo.n71rveu5qr8"
+    },
+    {
+      "ref": "BomRef.rqmrfs5cgu.enrcalpf3mo"
+    },
+    {
+      "ref": "BomRef.utg6fl2g0eg.mhrdg16upl8"
+    }
+  ]
+}
