@@ -1,0 +1,102 @@
+name: Generate NOTICE with ScanCode
+
+on:
+  workflow_dispatch:
+    inputs:
+      sbom_paths:
+        description: "Comma-separated SBOM JSON paths (SPDX or CycloneDX)"
+        required: true
+        default: "sbom.json"
+      notice_title:
+        description: "Title for NOTICE.md"
+        required: false
+        default: "Open Source Notices"
+      include_spdx_texts:
+        description: "Append canonical SPDX license texts (true/false)"
+        required: false
+        default: "true"
+  push:
+    branches: [ main, master ]
+    paths:
+      - "sbom*.json"
+      - "sboms/**/*.json"
+
+jobs:
+  build-notice:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # allow committing NOTICE.md, if desired
+      actions: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install ScanCode Toolkit + helpers
+        run: |
+          python -m pip install --upgrade pip
+          # ScanCode Toolkit from PyPI
+          pip install scancode-toolkit
+          # helper libs used by our script
+          pip install requests packaging cyclonedx-python-lib spdx-tools-python
+        # ScanCode Toolkit is packaged for CI use and supports JSON/SPDX/CycloneDX outputs. [4](https://pypi.org/project/scancode-toolkit/)
+
+      - name: Prepare inputs
+        id: prep
+        run: |
+          python - <<'PY'
+          import os
+          # Normalize inputs for the script
+          sboms = "${{ github.event.inputs.sbom_paths || 'sbom.json' }}".split(",")
+          sboms = [s.strip() for s in sboms if s.strip()]
+          with open("sbom_list.txt","w") as f:
+            for s in sboms:
+              f.write(s+"\n")
+          title = "${{ github.event.inputs.notice_title || 'Open Source Notices' }}"
+          include_spdx = "${{ github.event.inputs.include_spdx_texts || 'true' }}".lower() == "true"
+          with open("notice.cfg","w") as f:
+            f.write(f"title={title}\ninclude_spdx_texts={include_spdx}\n")
+          PY
+
+      - name: Run ScanCode + build NOTICE
+        run: |
+          python scripts/scan_and_notice.py \
+            --sbom-list sbom_list.txt \
+            --cfg notice.cfg \
+            --out NOTICE.md \
+            --workdir .scancode_work
+
+      - name: Upload NOTICE.md
+        uses: actions/upload-artifact@v4
+        with:
+          name: notice-md
+          path: NOTICE.md
+
+      # Optional: commit the NOTICE file back to the repo
+      - name: Commit NOTICE.md to repository
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        run: |
+          set -e
+          if [ -f NOTICE.md ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add NOTICE.md
+            # Only commit when content changed
+            git diff --cached --quiet || git commit -m "chore: update NOTICE.md via ScanCode"
+            git push
+          fi
