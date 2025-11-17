@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import argparse, json, os, re, shutil, subprocess, sys, tempfile, tarfile, zipfile
+import argparse, json, os, re, shutil, subprocess, sys, tarfile, zipfile
 from pathlib import Path
 import requests
 from packaging.version import parse as parse_version
 
-# SBOM parsers (CycloneDX and SPDX)
-# - CycloneDX Python lib: read/validate CycloneDX docs
-# - SPDX tools: parse SPDX JSON
-# Docs: CycloneDX python lib / SPDX tools-python.  [7](https://pypi.org/project/cyclonedx-python-lib/)[8](https://github.com/CycloneDX/cyclonedx-python-lib)[9](https://github.com/spdx/tools-python)
-
+# NOASSERT handling consistent with SPDX/CycloneDX conventions
 NOASSERT = {"NOASSERTION", "NONE", "", None}
 
 def normalize(s):
@@ -57,6 +53,23 @@ def parse_spdx(doc):
             if "purl" in rtype and loc:
                 purl = loc; break
         comps.append({"name":name,"version":version,"license":license_str,"url":url,"purl":purl})
+    # SPDX-Lite fallback (aggregate from files)
+    if not pkgs and (doc.get("files") or []):
+        doc_name = normalize(doc.get("name")) or normalize(doc.get("documentName")) or "SPDX-Document"
+        files = doc.get("files") or []
+        lic_tokens, cpr_lines = set(), []
+        for f in files:
+            v = normalize(f.get("licenseConcluded"))
+            if v: lic_tokens.add(v)
+            for vv in f.get("licenseInfoInFile") or []:
+                v2 = normalize(vv)
+                if v2: lic_tokens.add(v2)
+            cpr = normalize(f.get("copyrightText"))
+            if cpr and cpr not in NOASSERT:
+                cpr_lines.append(cpr)
+        license_str = " AND ".join(sorted(lic_tokens)) if lic_tokens else None
+        cpr_agg = "\n".join(sorted(set(cpr_lines))) if cpr_lines else None
+        comps.append({"name":doc_name,"version":None,"license":license_str,"url":None,"purl":None})
     return comps
 
 def parse_cdx(doc):
@@ -68,7 +81,6 @@ def parse_cdx(doc):
         purl = normalize(c.get("purl"))
         lic = None
         if c.get("licenses"):
-            # prefer expression if present
             exprs = [normalize(x.get("expression")) for x in c["licenses"] if isinstance(x, dict) and x.get("expression")]
             if exprs and exprs[0]: lic = exprs[0]
             else:
@@ -81,7 +93,6 @@ def parse_cdx(doc):
                         elif lname: ids_or_names.append(lname)
                 ids_or_names = sorted(set(ids_or_names))
                 lic = " AND ".join(ids_or_names) if ids_or_names else None
-        # pick one useful external reference as URL
         url = None
         for ref in c.get("externalReferences") or []:
             rtype = (ref.get("type") or "").lower()
@@ -106,7 +117,6 @@ def load_sboms(list_path):
         k = ("purl", c["purl"]) if c.get("purl") else ("nv", f"{(c.get('name') or '').lower()}@{(c.get('version') or '').lower()}")
         if k not in out: out[k] = c
         else:
-            # prefer non-empty fields
             for fld in ("license","url","version"):
                 if not out[k].get(fld) and c.get(fld): out[k][fld]=c[fld]
     return list(out.values())
@@ -117,12 +127,8 @@ REQ_TIMEOUT = 45
 def ensure_dir(p): Path(p).mkdir(parents=True, exist_ok=True)
 
 def download_npm(name, version, dest):
-    # npm pack (tarball) approach
-    # Doc: npm registry exposes dist.tarball in metadata; npm pack retrieves tarball. [10](https://github.com/npm/registry/blob/main/docs/responses/package-metadata.md)[11](https://stackoverflow.com/questions/33530978/download-a-package-from-npm-as-a-tar-not-installing-it-to-a-module)
-    if version:
-        url = f"https://registry.npmjs.org/{name}/{version}"
-    else:
-        url = f"https://registry.npmjs.org/{name}/latest"
+    # npm registry metadata → dist.tarball (or latest)
+    url = f"https://registry.npmjs.org/{name}/{version}" if version else f"https://registry.npmjs.org/{name}/latest"
     r = requests.get(url, timeout=REQ_TIMEOUT)
     r.raise_for_status()
     meta = r.json()
@@ -133,13 +139,12 @@ def download_npm(name, version, dest):
     return str(fn)
 
 def download_pypi(name, version, dest):
-    # Doc: PyPI JSON API exposes release file URLs incl. sdists/wheels. [12](https://docs.pypi.org/api/json/)
+    # PyPI JSON API → prefer sdist; else first file
     url = f"https://pypi.org/pypi/{name}/{version}/json" if version else f"https://pypi.org/pypi/{name}/json"
     r = requests.get(url, timeout=REQ_TIMEOUT)
     r.raise_for_status()
     data = r.json()
     urls = data.get("urls", [])
-    # prefer sdist else first file
     sdist = next((u for u in urls if u.get("packagetype")=="sdist"), None) or (urls[0] if urls else None)
     if not sdist: return None
     buf = requests.get(sdist["url"], timeout=REQ_TIMEOUT).content
@@ -148,9 +153,7 @@ def download_pypi(name, version, dest):
     return str(fn)
 
 def download_maven(group, artifact, version, dest):
-    # Maven Central layout: repo1.maven.org/maven2/<group>/<artifact>/<version>/<artifact>-<version>.jar. [13](https://codingtechroom.com/question/download-jars-maven-central-without-pom)
     base = f"https://repo1.maven.org/maven2/{group.replace('.','/')}/{artifact}/{version}"
-    # try sources.jar then jar
     for suffix in (f"{artifact}-{version}-sources.jar", f"{artifact}-{version}.jar"):
         url = f"{base}/{suffix}"
         r = requests.get(url, timeout=REQ_TIMEOUT)
@@ -162,96 +165,78 @@ def download_maven(group, artifact, version, dest):
 
 def download_nuget(name, version, dest):
     if not version: return None
-    # NuGet v3 flat container: /v3-flatcontainer/<lower>/<version>/<lower>.<version>.nupkg. [14](https://eyindia-my.sharepoint.com/personal/bharath_n3_in_ey_com/Documents/Microsoft%20Copilot%20Chat%20Files/app%20(3).py).py).py)
     lower = name.lower()
-    url = f"https://api.nuget.org/v3-flatcontainer/{lower}/{version}/{lower}.{version}.nupkgupkg"
+    url = f"https://api.nuget.org/v3-flatcontainer/{lower}/{version}/{lower}.{version}.nupkg"
     r = requests.get(url, timeout=REQ_TIMEOUT)
-    if  if r.status_code == 200:
+    if r.status_code == 200:
         fn = Path(dest)/f"{lower}.{version}.nupkg"
-       
         fn.write_bytes(r.content)
         return str(fn)
     return None
 
-def
 def download_rubygems(name, version, dest):
-    if not version: return NoneNone
+    if not version: return None
     url = f"https://rubygems.org/downloads/{name}-{version}.gem"
     r = requests.get(url, timeout=REQ_TIMEOUT)
-   
     if r.status_code == 200:
         fn = Path(dest)/f"{name}-{version}.gem"
-       gem"
         fn.write_bytes(r.content); return str(fn)
     return None
 
 def download_golang(module, version, dest):
     if not version: return None
-    url = f"https://proxy.golang.org/{moduledule}/@v/{version}.zip"
+    url = f"https://proxy.golang.org/{module}/@v/{version}.zip"
     r = requests.get(url, timeout=REQ_TIMEOUT)
-   REQ_TIMEOUT)
     if r.status_code == 200:
         fn = Path(dest)/f"{module.replace('/','_')}@{version}.zip"
         fn.write_bytes(r.content); return str(fn)
     return None
 
-def download_by_purl(purl, version, destdest):
+def download_by_purl(purl, version, dest):
     if not purl: return None
-   None
     if purl.startswith("pkg:npm/"):
-        pkg = purl.split("/",2)[-1].split2)[-1].split("@")[0]
+        pkg = purl.split("/",2)[-1].split("@")[0]
         ver = version or (purl.split("@")[-1] if "@" in purl else None)
-ne)
         return download_npm(pkg, ver, dest)
-    if)
     if purl.startswith("pkg:pypi/"):
-        pkg = purl.split("/",2)[-1].("/",2)[-1].split("@")[0]
+        pkg = purl.split("/",2)[-1].split("@")[0]
         ver = version or (purl.split("@")[-1] if "@" in purl else None)
-ne)
         return download_pypi(pkg, ver, dest)
-    if)
     if purl.startswith("pkg:maven/"):
         rest = purl[len("pkg:maven/"):]
-        coords  coords = rest.split("@")[0].split("/")
-        if  if len(coords)>=2 and version:
-            return download_maven(coordsn(coords[0], coords[1], version, dest)
+        coords = rest.split("@")[0].split("/")
+        if len(coords)>=2 and version:
+            return download_maven(coords[0], coords[1], version, dest)
     if purl.startswith("pkg:nuget/"):
-       
         pkg = purl.split("/",2)[-1].split("@")[0]
-        ver =   ver = version or (purl.split("@")[-1] if "@" in purl else None)
-        return  return download_nuget(pkg, ver, dest)
+        ver = version or (purl.split("@")[-1] if "@" in purl else None)
+        return download_nuget(pkg, ver, dest)
     if purl.startswith("pkg:gem/"):
-       
         pkg = purl.split("/",2)[-1].split("@")[0]
-        ver =   ver = version or (purl.split("@")[-1] if "@" in purl else None)
-        return download_rubload_rubygems(pkg, ver, dest)
+        ver = version or (purl.split("@")[-1] if "@" in purl else None)
+        return download_rubygems(pkg, ver, dest)
     if purl.startswith("pkg:golang/"):
-       
         mod = purl[len("pkg:golang/"):].split("@")[0]
-        ver =   ver = version or (purl.split("@")[-1] if "@" in purl else None)
-        returnturn download_golang(mod, ver, dest)
+        ver = version or (purl.split("@")[-1] if "@" in purl else None)
+        return download_golang(mod, ver, dest)
     return None
 
-def extract extract_archive(path, outdir):
-    ensure_dir(outdir)
-    p   p = Path(path)
+def extract_archive(path, outdir):
+    Path(outdir).mkdir(parents=True, exist_ok=True)
+    p = Path(path)
     try:
-        # tar
-            if p.suffix in (".tgz",".gz",".tar"):
-            with    with tarfile.open(p, "r:*") as tf:
+        if p.suffix in (".tgz",".gz",".tar"):
+            with tarfile.open(p, "r:*") as tf:
                 tf.extractall(outdir)
             return outdir
-        # zip/jar
-        with    with zipfile.ZipFile(p) as zf:
+        with zipfile.ZipFile(p) as zf:
             zf.extractall(outdir)
         return outdir
     except Exception:
-        returnturn None
+        return None
 
 def run_scancode_scan(src_dir, out_json):
-   on):
-    # ScanCode CLI options:
-    # -c (copyright), -l (license) plus --license-text to include matched texts; output JSON pretty. [6](https://scancode-toolkit.readthedocs.io/en/stable/tutorials/how_to_run_a_scan.html)[1](https://scancode-toolkit.readthedocs.io/en/latest/tutorials/how_to_set_what_will_be_detected_in_a_scan.html)
+    # Scan for licenses (+ license text) and copyrights; JSON pretty output
     cmd = [
         "scancode", "-cl", "--license-text",
         "--json-pp", out_json, src_dir
@@ -264,14 +249,11 @@ def pick_copyrights(scan_json):
     for f in data.get("files", []):
         for cp in f.get("copyrights", []):
             val = cp.get("value")
-            if val:
-                lines.append(val.strip())
-    # de-dupe preserve order
+            if val: lines.append(val.strip())
     seen, uniq = set(), []
     for l in lines:
         if l not in seen:
             seen.add(l); uniq.append(l)
-    # cap to reasonable length
     return "\n".join(uniq[:25]) if uniq else None
 
 def collect_license_texts(scan_json):
@@ -281,14 +263,12 @@ def collect_license_texts(scan_json):
         for det in f.get("license_detections", []):
             key = det.get("license_expression_spdx") or det.get("license_expression") or det.get("license_key")
             if det.get("matches"):
-                # concat match texts
                 chunks = []
                 for m in det["matches"]:
                     t = m.get("matched_text") or ""
                     t = t.strip()
                     if t: chunks.append(t)
                 if chunks and key:
-                    # store first big chunk per license key to keep NOTICE compact
                     texts.setdefault(key, chunks[0])
     return texts
 
@@ -303,10 +283,8 @@ def build_notice(title, rows, license_texts, include_spdx_texts):
             out.append(f"- **Copyright:** {r['copyright']}")
         out.append("")  # blank
 
-    # Append unique license texts (from ScanCode detections)
     if license_texts:
         out.append("\n## License Texts\n")
-        # unique by key
         for lid, text in sorted(license_texts.items()):
             out.append(f"### {lid}\n```text\n{text.strip()}\n```\n")
 
@@ -325,18 +303,16 @@ def main():
     title = cfg.get("title","Open Source Notices")
 
     comps = load_sboms(args.sbom_list)
-    ensure_dir(args.workdir)
+    Path(args.workdir).mkdir(parents=True, exist_ok=True)
     rows = []
     appendix_texts = {}
 
     for c in comps:
         name, version, url, purl, lic = c.get("name"), c.get("version"), c.get("url"), c.get("purl"), c.get("license")
         comp_dir = Path(args.workdir)/f"{(name or 'component').replace('/','_')}"
-        ensure_dir(comp_dir)
-        # 1) prefer download by PURL; else use URL (best-effort)
+        comp_dir.mkdir(parents=True, exist_ok=True)
         archive = download_by_purl(purl, version, comp_dir)
         if not archive and url:
-            # last resort: try to fetch repo zip if GitHub
             m = re.match(r"https?://github\.com/([^/]+)/([^/?#]+)", url or "")
             if m:
                 org, repo = m.groups()
@@ -346,18 +322,15 @@ def main():
                     zf = Path(comp_dir)/f"{repo}-main.zip"; zf.write_bytes(r.content)
                     archive = str(zf)
 
-        # 2) extract, then run ScanCode
         scan_src = None
-        if archive: scan_src = extract_archive(archive, Path(comp_dir)/"src")
+        if archive: scan_src = extract_archive(archive, comp_dir/"src")
         if not scan_src:
-            # if we cannot download/extract, skip ScanCode
             rows.append({"name":name, "version":version, "url":url, "license":lic})
             continue
 
-        out_json = str(Path(comp_dir)/"scan.json")
+        out_json = str(comp_dir/"scan.json")
         run_scancode_scan(str(scan_src), out_json)
 
-        # 3) collect copyrights & license texts
         cp = pick_copyrights(out_json)
         lt = collect_license_texts(out_json)
         if lt:
