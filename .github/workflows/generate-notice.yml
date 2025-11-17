@@ -6,7 +6,7 @@ on:
       sbom_paths:
         description: "Comma-separated SBOM JSON paths (SPDX or CycloneDX)"
         required: true
-        default: "sbom.json"
+        default: "sboms/spdx-lite.json,sboms/cyclonedx.json"
       notice_title:
         description: "Title for NOTICE.md"
         required: false
@@ -18,8 +18,8 @@ on:
   push:
     branches: [ main, master ]
     paths:
-      - "sbom*.json"
       - "sboms/**/*.json"
+      - "sbom*.json"
 
 jobs:
   build-notice:
@@ -50,26 +50,25 @@ jobs:
       - name: Install ScanCode Toolkit + helpers
         run: |
           python -m pip install --upgrade pip
-          # ScanCode Toolkit from PyPI
+          # ScanCode Toolkit
           pip install scancode-toolkit
           # helper libs used by our script
-          pip install requests packaging cyclonedx-python-lib spdx-tools-python
-        # ScanCode Toolkit is packaged for CI use and supports JSON/SPDX/CycloneDX outputs. [4](https://pypi.org/project/scancode-toolkit/)
+          pip install requests packaging cyclonedx-python-lib spdx-tools
 
       - name: Prepare inputs
         id: prep
         run: |
           python - <<'PY'
           import os
-          # Normalize inputs for the script
-          sboms = "${{ github.event.inputs.sbom_paths || 'sbom.json' }}".split(",")
+          sboms = "${{ github.event.inputs.sbom_paths || 'sboms/spdx-lite.json,sboms/cyclonedx.json' }}".split(",")
           sboms = [s.strip() for s in sboms if s.strip()]
-          with open("sbom_list.txt","w") as f:
+          os.makedirs("sboms", exist_ok=True)
+          with open("sbom_list.txt","w", encoding="utf-8") as f:
             for s in sboms:
               f.write(s+"\n")
           title = "${{ github.event.inputs.notice_title || 'Open Source Notices' }}"
           include_spdx = "${{ github.event.inputs.include_spdx_texts || 'true' }}".lower() == "true"
-          with open("notice.cfg","w") as f:
+          with open("notice.cfg","w", encoding="utf-8") as f:
             f.write(f"title={title}\ninclude_spdx_texts={include_spdx}\n")
           PY
 
