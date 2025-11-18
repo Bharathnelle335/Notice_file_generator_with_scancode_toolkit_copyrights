@@ -115,31 +115,6 @@
             ]
         },
         {
-            "name": "pkg:github.com/freebsd/freebsd-src",
-            "SPDXID": "SPDXRef-2a4c10f5864a21ce858309cfcf4929b6",
-            "versionInfo": "unknown",
-            "downloadLocation": "https://github.com/freebsd/freebsd-src/",
-            "filesAnalyzed": false,
-            "supplier": "Organization: freebsd",
-            "homepage": "https://github.com/freebsd/freebsd-src/",
-            "licenseDeclared": "BSD-3-Clause",
-            "licenseConcluded": "BSD-2-Clause AND BSD-3-Clause",
-            "copyrightText": "NOASSERTION",
-            "externalRefs": [
-                {
-                    "referenceCategory": "PACKAGE_MANAGER",
-                    "referenceLocator": "pkg:github.com/freebsd/freebsd-src",
-                    "referenceType": "purl"
-                }
-            ],
-            "checksums": [
-                {
-                    "algorithm": "MD5",
-                    "checksumValue": "00000000000000000000000000000000"
-                }
-            ]
-        },
-        {
             "name": "pkg:golang/github.com/go-errors/errors",
             "SPDXID": "SPDXRef-d2a32107c567a7adf2e2682dba5e24b7",
             "versionInfo": "v1.0.1",
@@ -429,31 +404,6 @@
                 {
                     "referenceCategory": "PACKAGE_MANAGER",
                     "referenceLocator": "pkg:github/starfive-tech/opensbi",
-                    "referenceType": "purl"
-                }
-            ],
-            "checksums": [
-                {
-                    "algorithm": "MD5",
-                    "checksumValue": "00000000000000000000000000000000"
-                }
-            ]
-        },
-        {
-            "name": "pkg:github.com/torvalds/linux",
-            "SPDXID": "SPDXRef-da9baf8ec1fc557918bed49f3b83cfee",
-            "versionInfo": "unknown",
-            "downloadLocation": "https://github.com/torvalds/linux/",
-            "filesAnalyzed": false,
-            "supplier": "Organization: torvalds",
-            "homepage": "https://github.com/torvalds/linux/",
-            "licenseDeclared": "GPL-2.0-only",
-            "licenseConcluded": "GPL-2.0-only",
-            "copyrightText": "NOASSERTION",
-            "externalRefs": [
-                {
-                    "referenceCategory": "PACKAGE_MANAGER",
-                    "referenceLocator": "pkg:github.com/torvalds/linux",
                     "referenceType": "purl"
                 }
             ],
