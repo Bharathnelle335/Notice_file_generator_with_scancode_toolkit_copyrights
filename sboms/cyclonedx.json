@@ -397,68 +397,6 @@
     },
     {
       "type": "library",
-      "name": "pkg:github.com/freebsd/freebsd-src",
-      "version": "unknown",
-      "bom-ref": "BomRef.ou6bksro6do.h6fbqhdfc78",
-      "publisher": "freebsd",
-      "licenses": [
-        {
-          "license": {
-            "id": "BSD-2-Clause",
-            "acknowledgement": "concluded"
-          }
-        },
-        {
-          "license": {
-            "id": "BSD-3-Clause",
-            "acknowledgement": "declared"
-          }
-        },
-        {
-          "license": {
-            "id": "BSD-3-Clause",
-            "acknowledgement": "concluded"
-          }
-        }
-      ],
-      "purl": "pkg:github.com/freebsd/freebsd-src",
-      "externalReferences": [
-        {
-          "url": "https://github.com/freebsd/freebsd-src/",
-          "type": "website"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "pkg:github.com/torvalds/linux",
-      "version": "unknown",
-      "bom-ref": "BomRef.pkgd7t9p0lo.n71rveu5qr8",
-      "publisher": "torvalds",
-      "licenses": [
-        {
-          "license": {
-            "id": "GPL-2.0-only",
-            "acknowledgement": "declared"
-          }
-        },
-        {
-          "license": {
-            "id": "GPL-2.0-only",
-            "acknowledgement": "concluded"
-          }
-        }
-      ],
-      "purl": "pkg:github.com/torvalds/linux",
-      "externalReferences": [
-        {
-          "url": "https://github.com/torvalds/linux/",
-          "type": "website"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "pkg:golang/github.com/olekukonko/tablewriter",
       "version": "v0.0.4",
       "bom-ref": "BomRef.rqmrfs5cgu.enrcalpf3mo",
