@@ -1,0 +1,525 @@
+name: Extract components & fetch copyrights + licenses
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate SBOM files exist
+        run: |
+          set -euo pipefail
+          test -f "sboms/spdx-lite.json" || { echo "Missing sboms/spdx-lite.json" >&2; exit 1; }
+          test -f "sboms/cyclonedx.json" || { echo "Missing sboms/cyclonedx.json" >&2; exit 1; }
+
+      - name: Set up Python (3.11 for ScanCode 32.4.x)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xz-utils bzip2 zlib1g libxml2-dev libxslt1-dev git-lfs
+          git lfs install
+
+      # ========= Parse SBOMs → components.json (with license from SBOMs) =========
+      - name: Generate components.json from SBOMs (component, version|null, git_url, license)
+        run: |
+          set -euo pipefail
+          python - << 'PY'
+          import json, os, re, urllib.parse
+
+          SPDX_PATH = "sboms/spdx-lite.json"
+          CDX_PATH  = "sboms/cyclonedx.json"
+
+          def load_json(path):
+              if not os.path.exists(path): return None
+              with open(path, 'r', encoding='utf-8') as f: return json.load(f)
+
+          def is_git_host(url: str|None) -> bool:
+              if not url: return False
+              u = url.lower()
+              return ("github.com" in u) or ("gitlab.com" in u) or ("bitbucket.org" in u) or u.startswith(("git://", "git@", "ssh://"))
+
+          def from_purl_to_git(url: str|None) -> str|None:
+              if not url: return None
+              s = url.strip()
+              if s.startswith("pkg:"): s = s[4:]
+              s = s.split('#', 1)[0].split('?', 1)[0]
+              base = s.rsplit('@', 1)[0]
+              m = re.search(r'^(github\\.com|gitlab\\.com|bitbucket\\.org)/([^/]+)/([^/]+)$', base)
+              if m:
+                  host, owner, repo = m.groups()
+                  repo = repo.rstrip('.git')
+                  return f"https://{host}/{owner}/{repo}.git"
+              if base.startswith(("http://","https://")) and is_git_host(base):
+                  u = base.rstrip("/")
+                  if not u.endswith(".git"): u += ".git"
+                  return u
+              return None
+
+          def normalize_git_url(url: str|None) -> str|None:
+              if not url: return None
+              if url.strip().startswith("pkg:"):
+                  converted = from_purl_to_git(url)
+                  if converted: return converted
+              u = url.strip()
+              if u.startswith("http") and is_git_host(u) and not u.endswith(".git"):
+                  u = u.rstrip("/") + ".git"
+              return u
+
+          def last_segment(name: str|None):
+              if not name: return None
+              s = name
+              for sep in ('/', ':'):
+                  if sep in s: s = s.split(sep)[-1]
+              return s
+
+          def extract_from_purl(purl):
+              if not purl: return (None, None, None)
+              s = purl.strip()
+              if s.startswith("pkg:"): s = s[4:]
+              s = s.split('#', 1)[0].split('?', 1)[0]
+              version = None
+              base = s
+              if '@' in s:
+                  base, version = s.rsplit('@', 1)
+              component = urllib.parse.unquote(base.split('/')[-1])
+              git_url = from_purl_to_git(purl)
+              return (component, version, git_url)
+
+          def clean_version(ver: str|None) -> str|None:
+              if not ver: return None
+              v = ver.strip().lower()
+              if v in {"", "unknown", "n/a", "na", "none"}:
+                  return None
+              return ver.strip()
+
+          # ---- License extraction from SBOMs ----
+          def pick_spdx_license_from_spdx(pkg) -> str|None:
+              # Prefer licenseConcluded, else licenseDeclared
+              lic = pkg.get("licenseConcluded") or pkg.get("licenseDeclared")
+              return (lic or None)
+
+          def pick_spdx_license_from_cdx(comp) -> str|None:
+              # CycloneDX component.licenses: [{license: {id: SPDX}}] or {expression: SPDX expr}
+              for lic in comp.get("licenses", []) or []:
+                  lobj = lic.get("license") or {}
+                  spdx_id = lobj.get("id")
+                  expr = lic.get("expression")
+                  if expr:
+                      return expr
+                  if spdx_id:
+                      return spdx_id
+              return None
+
+          def best_git_url_from_spdx(pkg) -> str|None:
+              if not pkg: return None
+              for ref in pkg.get("externalRefs", []) or []:
+                  rtype = (ref.get("referenceType") or ref.get("type") or "").lower()
+                  loc = ref.get("referenceLocator") or ref.get("locator") or ""
+                  if is_git_host(loc) or rtype in {"vcs", "repository", "scm"}:
+                      u = normalize_git_url(loc)
+                      if u: return u
+              dl = pkg.get("downloadLocation") or ""
+              if is_git_host(dl):
+                  u = normalize_git_url(dl)
+                  if u: return u
+              hp = pkg.get("homepage") or ""
+              if is_git_host(hp):
+                  u = normalize_git_url(hp)
+                  if u: return u
+              return None
+
+          def best_git_url_from_cdx(comp, purl) -> str|None:
+              if comp:
+                  for ref in comp.get("externalReferences", []) or []:
+                      rtype = (ref.get("type") or "").lower()
+                      url = ref.get("url") or ref.get("locator") or ""
+                      if is_git_host(url) or rtype in {"vcs", "repository", "scm", "source"}:
+                          u = normalize_git_url(url)
+                          if u: return u
+                  url = comp.get("repository") or ""
+                  if is_git_host(url):
+                      u = normalize_git_url(url)
+                      if u: return u
+              name_p, ver_p, git_p = extract_from_purl(purl) if purl else (None, None, None)
+              return git_p
+
+          def parse_cyclonedx(path):
+              out = []
+              data = load_json(path)
+              if not data: return out
+              for c in data.get("components", []):
+                  purl = c.get("purl")
+                  name_p, ver_p, git_p = extract_from_purl(purl) if purl else (None, None, None)
+                  name = name_p or last_segment(c.get("name"))
+                  version = clean_version(c.get("version") or ver_p)
+                  git_url = normalize_git_url(best_git_url_from_cdx(c, purl) or git_p)
+                  license_sbom = pick_spdx_license_from_cdx(c)
+                  if name:
+                      out.append({"component": name, "version": version, "git_url": git_url, "license": license_sbom})
+              return out
+
+          def parse_spdx(path):
+              out = []
+              data = load_json(path)
+              if not data: return out
+              pkgs = data.get("packages") or []
+              for p in pkgs:
+                  name = last_segment(p.get("name") or p.get("packageName"))
+                  version = clean_version(p.get("versionInfo"))
+                  purl = None
+                  for ref in p.get("externalRefs", []) or []:
+                      rtype = (ref.get("referenceType") or ref.get("type") or "").lower()
+                      loc = ref.get("referenceLocator") or ref.get("locator") or ""
+                      if rtype == "purl" and loc:
+                          purl = loc
+                          break
+                  name_p, ver_p, git_p = extract_from_purl(purl) if purl else (None, None, None)
+                  if name_p: name = name_p
+                  if not version: version = clean_version(ver_p)
+                  git_url = normalize_git_url(best_git_url_from_spdx(p) or git_p)
+                  license_sbom = pick_spdx_license_from_spdx(p)
+                  if name:
+                      out.append({"component": name, "version": version, "git_url": git_url, "license": license_sbom})
+              return out
+
+          # Parse, merge by (component, version). Prefer entries that have license/git_url.
+          comps = parse_cyclonedx(CDX_PATH) + parse_spdx(SPDX_PATH)
+          merged = {}
+          for c in comps:
+              key = (c["component"], c.get("version") or "")
+              prev = merged.get(key)
+              if not prev:
+                  merged[key] = c
+              else:
+                  # prefer license present
+                  if not prev.get("license") and c.get("license"):
+                      prev["license"] = c["license"]
+                  # prefer git_url present
+                  if not prev.get("git_url") and c.get("git_url"):
+                      prev["git_url"] = c["git_url"]
+
+          result = list(merged.values())
+
+          os.makedirs("artifacts", exist_ok=True)
+          with open("artifacts/components.json", "w", encoding="utf-8") as f:
+              json.dump({"components": result}, f, indent=2, ensure_ascii=False)
+          print(f"Wrote artifacts/components.json with {len(result)} components.")
+          PY
+
+      - name: Upload components.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: components-json
+          path: artifacts/components.json
+
+      # ========= Install ScanCode (PyPI) =========
+      - name: Create venv & install ScanCode (PyPI, pinned 32.4.1)
+        id: install_scancode
+        run: |
+          set -euo pipefail
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install "scancode-toolkit==32.4.1"
+          .venv/bin/scancode --version
+          echo "SCANCODE=.venv/bin/scancode" >> "$GITHUB_ENV"
+
+      # ========= Clone & Scan =========
+      - name: Clone repos and run ScanCode (copyright + license)
+        env:
+          SCANCODE: ${{ env.SCANCODE }}
+        run: |
+          set -euo pipefail
+          python - << 'PY'
+          import json, os, subprocess, shlex, re
+
+          SCANCODE = os.environ["SCANCODE"]
+          with open("artifacts/components.json", "r", encoding="utf-8") as f:
+              comps = json.load(f).get("components", [])
+
+          os.makedirs("repos", exist_ok=True)
+          os.makedirs("scancode_results", exist_ok=True)
+
+          def sanitize(s): return re.sub(r'[^A-Za-z0-9_.-]+', '-', (s or "")).strip('-') or "unknown"
+          def run(cmd):
+              print("+", cmd)
+              return subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+          for item in comps:
+              name = item.get("component")
+              version = item.get("version")  # None => default branch
+              git_url = item.get("git_url")
+
+              if not name or not git_url:
+                  # Write an empty scan result to keep pipeline consistent
+                  out_json = os.path.join("scancode_results", sanitize(name) + ".json")
+                  with open(out_json, "w", encoding="utf-8") as f:
+                      json.dump({"files": []}, f)
+                  continue
+
+              dest = os.path.join("repos", sanitize(name) + (f"-{sanitize(version)}" if version else ""))
+              if not os.path.exists(dest):
+                  if version:
+                      p = run(f"git clone --depth 1 --branch {shlex.quote(version)} {shlex.quote(git_url)} {shlex.quote(dest)}")
+                      if p.returncode != 0:
+                          print(p.stdout)
+                          out_json = os.path.join("scancode_results", sanitize(name) + ".json")
+                          with open(out_json, "w", encoding="utf-8") as f:
+                              json.dump({"files": []}, f)
+                          continue
+                  else:
+                      p = run(f"git clone --depth 1 {shlex.quote(git_url)} {shlex.quote(dest)}")
+                      if p.returncode != 0:
+                          print(p.stdout)
+                          out_json = os.path.join("scancode_results", sanitize(name) + ".json")
+                          with open(out_json, "w", encoding="utf-8") as f:
+                              json.dump({"files": []}, f)
+                          continue
+
+              out_json = os.path.join("scancode_results", sanitize(name) + ".json")
+              cmd = f"{shlex.quote(SCANCODE)} --copyright --license --strip-root --json-pp {shlex.quote(out_json)} {shlex.quote(dest)}"
+              p = run(cmd)
+              if p.returncode != 0:
+                  print(p.stdout)
+          PY
+
+      - name: Upload raw ScanCode outputs (per-repo)
+        uses: actions/upload-artifact@v4
+        with:
+          name: scancode-raw
+          path: scancode_results
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # ========= Aggregate copyrights (JSON) — includes authors under copyrights =========
+      - name: Aggregate copyrights (JSON)
+        run: |
+          set -euo pipefail
+          python - << 'PY'
+          import json, os, re
+
+          with open("artifacts/components.json", "r", encoding="utf-8") as f:
+              comps = json.load(f).get("components", [])
+
+          def sanitize(s): return re.sub(r'[^A-Za-z0-9_.-]+', '-', (s or "")).strip('-') or "unknown"
+
+          def load_raw(component_name):
+              p = os.path.join("scancode_results", sanitize(component_name) + ".json")
+              if os.path.exists(p):
+                  with open(p, "r", encoding="utf-8") as f:
+                      return json.load(f)
+              return {"files": []}
+
+          results = []
+          for item in comps:
+              name = item.get("component")
+              version = item.get("version")
+              git_url = item.get("git_url")
+              sbom_license = item.get("license")  # from SBOM
+
+              data = load_raw(name)
+
+              unique = set()
+              per_file = []
+
+              for fe in data.get("files", []) or []:
+                  path = fe.get("path") or fe.get("location") or ""
+
+                  file_statements = []
+                  holders = []
+
+                  # --- Copyrights (two shapes) ---
+                  for c in fe.get("copyrights", []) or []:
+                      # Shape A: single-string "copyright"
+                      single = (c.get("copyright") or "").strip()
+                      if single:
+                          file_statements.append(single)
+                          unique.add(single)
+                      # Shape B: list of "statements"
+                      for s in c.get("statements", []) or []:
+                          s = (s or "").strip()
+                          if s:
+                              file_statements.append(s)
+                              unique.add(s)
+                      # Optional holders
+                      for h in c.get("holders", []) or []:
+                          h = (h or "").strip()
+                          if h:
+                              holders.append(h)
+
+                  # --- Authors: add under copyrights as statements ---
+                  for a in fe.get("authors", []) or []:
+                      author = (a.get("author") or "").strip()
+                      if author:
+                          file_statements.append(author)   # include with copyrights
+                          unique.add(author)
+
+                  if file_statements or holders:
+                      per_file.append({
+                          "path": path,
+                          "statements": file_statements,
+                          "holders": holders
+                      })
+
+              results.append({
+                  "component": name,
+                  "version": version,
+                  "git_url": git_url,
+                  "license": sbom_license,  # keep SBOM license
+                  "copyrights": {
+                      "unique_statements": sorted(unique),
+                      "per_file": per_file
+                  }
+              })
+
+          os.makedirs("artifacts", exist_ok=True)
+          with open("artifacts/component_copyrights.json", "w", encoding="utf-8") as f:
+              json.dump({"components": results}, f, indent=2, ensure_ascii=False)
+          print(f"Wrote artifacts/component_copyrights.json for {len(results)} components.")
+          PY
+
+      - name: Upload aggregated copyrights (JSON)
+        uses: actions/upload-artifact@v4
+        with:
+          name: component-copyrights
+          path: artifacts/component_copyrights.json
+          if-no-files-found: error
+          retention-days: 30
+
+      # ========= Build Attribution (YAML) using SBOM license only =========
+      - name: Build per-component attribution (YAML from SBOM license, copyrights+authors from ScanCode)
+        run: |
+          set -euo pipefail
+          python - << 'PY'
+          import json, os, re
+
+          with open("artifacts/components.json", "r", encoding="utf-8") as f:
+              components = json.load(f).get("components", [])
+
+          with open("artifacts/component_copyrights.json", "r", encoding="utf-8") as f:
+              agg = json.load(f).get("components", [])
+
+          by_name = {c.get("component"): c for c in agg}
+
+          def esc(s):
+              if s is None: return '""'
+              if re.search(r'[:#\\-\\[\\]\\{\\},&*?]|^\\s|\\s$', s):
+                  return '"' + s.replace('"', '\\"') + '"'
+              return s
+
+          lines = []
+          lines.append("components:")
+          for comp in components:
+              name = comp.get("component")
+              version = comp.get("version")
+              url = comp.get("git_url")
+              sbom_license = comp.get("license")
+
+              lines.append("  - component: " + esc(name))
+              if version is not None:
+                  lines.append("    version: " + esc(version))
+              lines.append("    url: " + esc(url or ""))
+              lines.append("    license: " + esc(sbom_license or ""))
+
+              agg_entry = by_name.get(name, {})
+              cps = agg_entry.get("copyrights", {}).get("unique_statements", []) or []
+              if cps:
+                  lines.append("    copyrights:")
+                  for c in cps:
+                      lines.append("      - " + esc(c))
+              else:
+                  lines.append("    copyrights: []")
+
+          os.makedirs("artifacts", exist_ok=True)
+          out_yaml = "artifacts/component_attribution.yaml"
+          with open(out_yaml, "w", encoding="utf-8") as f:
+              f.write("\n".join(lines) + "\n")
+          print(f"Wrote {out_yaml} with {len(components)} components.")
+          PY
+
+      - name: Upload per-component attribution (YAML)
+        uses: actions/upload-artifact@v4
+        with:
+          name: component-attribution
+          path: artifacts/component_attribution.yaml
+          if-no-files-found: error
+          retention-days: 30
+
+      # ========= Build Attribution (TXT) using SBOM license only =========
+      - name: Build per-component attribution (TXT from SBOM license, copyrights+authors from ScanCode)
+        run: |
+          set -euo pipefail
+          python - << 'PY'
+          import json, os, re, sys
+
+          try:
+              with open("artifacts/components.json", "r", encoding="utf-8") as f:
+                  components = json.load(f).get("components", [])
+          except Exception as e:
+              print(f"FATAL: cannot read artifacts/components.json: {e}")
+              sys.exit(1)
+
+          try:
+              with open("artifacts/component_copyrights.json", "r", encoding="utf-8") as f:
+                  agg = json.load(f).get("components", [])
+          except Exception as e:
+              print(f"FATAL: cannot read aggregated copyrights: {e}")
+              sys.exit(1)
+
+          by_name = {c.get("component"): c for c in agg}
+
+          lines = []
+          for comp in components:
+              name = comp.get("component") or ""
+              version = comp.get("version")
+              url = comp.get("git_url") or ""
+              sbom_license = comp.get("license") or ""  # SBOM license only
+
+              lines.append(f"Component: {name}")
+              if version:
+                  lines.append(f"Version: {version}")
+              lines.append(f"URL: {url}")
+              lines.append(f"License: {sbom_license}")
+
+              lines.append("Copyrights:")
+              cps = (by_name.get(name, {}) or {}).get("copyrights", {}).get("unique_statements", []) or []
+              if cps:
+                  for stmt in cps:
+                      stmt = stmt.replace("<", "&lt;").replace(">", "&gt;")
+                      lines.append(f"- {stmt}")
+              else:
+                  lines.append("- (none)")
+
+              lines.append("")  # blank line between components
+
+          os.makedirs("artifacts", exist_ok=True)
+          out_txt = "artifacts/component_attribution.txt"
+          with open(out_txt, "w", encoding="utf-8") as f:
+              f.write("\n".join(lines).rstrip() + "\n")
+          print(f"Wrote {out_txt} with {len(components)} components.")
+          PY
+
+      - name: Upload per-component attribution (TXT)
+        uses: actions/upload-artifact@v4
+        with:
+          name: component-attribution-text
+          path: artifacts/component_attribution.txt
+          if-no-files-found: error
+          retention-days: 30
