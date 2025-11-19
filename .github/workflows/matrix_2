@@ -1,0 +1,731 @@
+name: Extract components & fetch copyrights — matrix (2-per-batch)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1) PREPARE: Parse SBOMs → artifacts/components.json (strict git URLs)
+  #    + Build a dynamic matrix: batches of size 2
+  # ---------------------------------------------------------------------------
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      matrix: ${{ steps.build_matrix.outputs.matrix_json }}
+      total_components: ${{ steps.build_matrix.outputs.total }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate SBOM files exist
+        run: |
+          set -euo pipefail
+          test -f "sboms/spdx-lite.json" || { echo "Missing sboms/spdx-lite.json" >&2; exit 1; }
+          test -f "sboms/cyclonedx.json" || { echo "Missing sboms/cyclonedx.json" >&2; exit 1; }
+
+      - name: Set up Python (3.11 for ScanCode 32.4.x)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xz-utils bzip2 zlib1g libxml2-dev libxslt1-dev git-lfs
+          git lfs install
+
+      # ========= Parse SBOMs → components.json (strict git URLs, no generic pkg:) =========
+      - name: Generate components.json
+        run: |
+          set -euo pipefail
+          python - << 'PY'
+          import json, os, re, urllib.parse
+          SPDX_PATH = "sboms/spdx-lite.json"
+          CDX_PATH = "sboms/cyclonedx.json"
+
+          def load_json(path):
+              if not os.path.exists(path): return None
+              with open(path, 'r', encoding='utf-8') as f: return json.load(f)
+
+          # ---- helpers (purl ignored for URL) ----
+          HOSTS = ("github.com", "gitlab.com", "bitbucket.org")
+          def is_git_host(url):
+              if not url: return False
+              u = url.strip().lower()
+              return any(h in u for h in HOSTS) or u.startswith(("git://","git@","ssh://"))
+          def normalize_git_url(url):
+              """
+              Accept only real VCS URLs; ignore any 'pkg:' inputs.
+              Ensure http(s) host URLs end with '.git'.
+              """
+              if not url: return None
+              u = url.strip()
+              if u.startswith("pkg:"): return None
+              if not (u.startswith(("http://","https://","ssh://","git://","git@")) or is_git_host(u)):
+                  return None
+              if u.startswith(("http://","https://")) and any(h in u for h in HOSTS):
+                  uu = u.rstrip("/")
+                  if not uu.endswith(".git"): uu += ".git"
+                  return uu
+              return u
+          def last_segment(name):
+              if not name: return None
+              s = name
+              for sep in ('/', ':'):
+                  if sep in s: s = s.split(sep)[-1]
+              return s
+          def extract_from_purl(purl):
+              """Only derive component/version; NEVER use purl for URL."""
+              if not purl: return (None, None, None)
+              s = purl.strip()
+              if s.startswith("pkg:"): s = s[4:]
+              s = s.split('#', 1)[0].split('?', 1)[0]
+              version = None
+              base = s
+              if '@' in s: base, version = s.rsplit('@', 1)
+              component = urllib.parse.unquote(base.split('/')[-1])
+              return (component, version, None)
+          def clean_version(ver):
+              if not ver: return None
+              v = str(ver).strip().lower()
+              if v in {"", "unknown", "n/a", "na", "none"}: return None
+              return str(ver).strip()
+
+          # ---- last-resort converter for pkg:-like locators ----
+          HOSTS = ("github.com", "gitlab.com", "bitbucket.org")
+          def _git_url_from_pkgish_locator(locator):
+              if not locator: return None
+              s = locator.strip()
+              if not s.startswith("pkg:"): return None
+              body = s[4:].split('#', 1)[0].split('?', 1)[0]
+              if '@' in body: body, _ = body.rsplit('@', 1)
+              parts = body.strip("/").split("/")
+              if len(parts) < 3: return None
+              host, owner, repo = None, None, None
+              if parts[0] == "golang" and parts[1] in HOSTS and len(parts) >= 4:
+                  host, owner, repo = parts[1], parts[2], parts[3]
+              elif parts[0] == "github" and len(parts) >= 3:
+                  host, owner, repo = "github.com", parts[1], parts[2]
+              elif parts[0] in HOSTS and len(parts) >= 3:
+                  host, owner, repo = parts[0], parts[1], parts[2]
+              if host and owner and repo:
+                  repo = repo.rstrip(".git")
+                  return f"https://{host}/{owner}/{repo}.git"
+              return None
+
+          # ---- license pickers ----
+          def pick_spdx_license_from_spdx(pkg):
+              return (pkg.get("licenseConcluded") or pkg.get("licenseDeclared") or None)
+          def pick_spdx_license_from_cdx(comp):
+              for lic in comp.get("licenses", []) or []:
+                  lobj = lic.get("license") or {}
+                  spdx_id = lobj.get("id")
+                  expr = lic.get("expression")
+                  if expr: return expr
+                  if spdx_id: return spdx_id
+              return None
+
+          # ---- URL resolvers ----
+          def best_git_url_from_spdx(pkg):
+              if not pkg: return None
+              dl = pkg.get("downloadLocation") or ""
+              u = normalize_git_url(dl)
+              if u: return u
+              hp = pkg.get("homepage") or ""
+              u = normalize_git_url(hp)
+              if u: return u
+              for ref in pkg.get("externalRefs", []) or []:
+                  rtype = (ref.get("referenceType") or ref.get("type") or "").lower()
+                  loc = ref.get("referenceLocator") or ref.get("locator") or ""
+                  if rtype in {"vcs","repository","scm"} or is_git_host(loc):
+                      u = normalize_git_url(loc)
+                      if u: return u
+              for ref in pkg.get("externalRefs", []) or []:
+                  loc = ref.get("referenceLocator") or ref.get("locator") or ""
+                  if isinstance(loc, str) and loc.startswith("pkg:"):
+                      u = _git_url_from_pkgish_locator(loc)
+                      if u: return u
+              return None
+
+          def best_git_url_from_cdx(comp, purl):
+              if comp:
+                  for ref in comp.get("externalReferences", []) or []:
+                      rtype = (ref.get("type") or "").lower()
+                      url = ref.get("url") or ref.get("locator") or ""
+                      if rtype in {"vcs","repository","scm","source"} or is_git_host(url):
+                          u = normalize_git_url(url)
+                          if u: return u
+                  url = comp.get("repository") or ""
+                  u = normalize_git_url(url)
+                  if u: return u
+                  for ref in comp.get("externalReferences", []) or []:
+                      loc = ref.get("url") or ref.get("locator") or ""
+                      if isinstance(loc, str) and loc.startswith("pkg:"):
+                          u = _git_url_from_pkgish_locator(loc)
+                          if u: return u
+              return None
+
+          # ---- parsers ----
+          def parse_cyclonedx(path):
+              out = []
+              data = load_json(path)
+              if not data: return out
+              for c in data.get("components", []):
+                  purl = c.get("purl")
+                  name_p, ver_p, _ = extract_from_purl(purl) if purl else (None, None, None)
+                  name = name_p or last_segment(c.get("name"))
+                  version = clean_version(c.get("version") or ver_p)
+                  git_url = normalize_git_url(best_git_url_from_cdx(c, purl))
+                  license_sbom = pick_spdx_license_from_cdx(c)
+                  if name:
+                      out.append({"component": name, "version": version, "git_url": git_url, "license": license_sbom})
+              return out
+
+          def parse_spdx(path):
+              out = []
+              data = load_json(path)
+              if not data: return out
+              pkgs = data.get("packages") or []
+              for p in pkgs:
+                  name = last_segment(p.get("name") or p.get("packageName"))
+                  version = clean_version(p.get("versionInfo"))
+                  purl = None
+                  for ref in p.get("externalRefs", []) or []:
+                      rtype = (ref.get("referenceType") or ref.get("type") or "").lower()
+                      loc = ref.get("referenceLocator") or ref.get("locator") or ""
+                      if rtype == "purl" and loc:
+                          purl = loc
+                          break
+                  name_p, ver_p, _ = extract_from_purl(purl) if purl else (None, None, None)
+                  if name_p: name = name_p
+                  if not version: version = clean_version(ver_p)
+                  git_url = normalize_git_url(best_git_url_from_spdx(p))
+                  license_sbom = pick_spdx_license_from_spdx(p)
+                  if name:
+                      out.append({"component": name, "version": version, "git_url": git_url, "license": license_sbom})
+              return out
+
+          comps = parse_cyclonedx(CDX_PATH) + parse_spdx(SPDX_PATH)
+          merged = {}
+          for c in comps:
+              key = (c["component"], c.get("version") or "")
+              prev = merged.get(key)
+              if not prev: merged[key] = c
+              else:
+                  if not prev.get("license") and c.get("license"): prev["license"] = c["license"]
+                  if not prev.get("git_url") and c.get("git_url"): prev["git_url"] = c["git_url"]
+
+          result = list(merged.values())
+          os.makedirs("artifacts", exist_ok=True)
+          with open("artifacts/components.json", "w", encoding="utf-8") as f:
+              json.dump({"components": result}, f, indent=2, ensure_ascii=False)
+          print(f"Wrote artifacts/components.json with {len(result)} components.")
+          PY
+
+      - name: Upload components.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: components-json
+          path: artifacts/components.json
+
+      # ========= Build dynamic matrix (batches of 2) =========
+      - name: Build matrix (2-per-batch)
+        id: build_matrix
+        run: |
+          set -euo pipefail
+          python - << 'PY'
+          import json, os, math
+          with open("artifacts/components.json","r",encoding="utf-8") as f:
+              comps = json.load(f)["components"]
+          # Prepare batches of 2 (by component name)
+          BATCH = 2
+          names = [c["component"] for c in comps]
+          include = []
+          for i in range(0, len(names), BATCH):
+              batch_names = names[i:i+BATCH]
+              include.append({
+                  "batch_index": i//BATCH,
+                  "batch_components": batch_names
+              })
+          matrix_json = json.dumps({"include": include})
+          print(matrix_json)
+          # Write outputs for next jobs
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fo:
+              fo.write(f"matrix_json={matrix_json}\n")
+              fo.write(f"total={len(names)}\n")
+          PY
+
+  # ---------------------------------------------------------------------------
+  # 2) SCAN-BATCH: Matrix job — each job scans 2 components in parallel,
+  #    writes snapshots, and appends a per-batch Summary section.
+  # ---------------------------------------------------------------------------
+  scan-batch:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout (for context only)
+        uses: actions/checkout@v4
+
+      - name: Download components.json
+        uses: actions/download-artifact@v4
+        with:
+          name: components-json
+          path: artifacts
+
+      - name: Set up Python (3.11)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xz-utils bzip2 zlib1g libxml2-dev libxslt1-dev git-lfs
+          git lfs install
+
+      - name: Create venv & install ScanCode (PyPI, pinned 32.4.1)
+        run: |
+          set -euo pipefail
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install "scancode-toolkit==32.4.1"
+          .venv/bin/scancode --version
+
+      # ========= Parallel scanning for this batch =========
+      - name: Clone & run ScanCode (parallel for this batch)
+        env:
+          SCANCODE: .venv/bin/scancode
+          BATCH_INDEX: ${{ matrix.batch_index }}
+          BATCH_COMPONENTS: ${{ toJSON(matrix.batch_components) }}
+        run: |
+          set -euo pipefail
+          python - << 'PY'
+          import json, os, subprocess, shlex, re, time
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+
+          SCANCODE = os.environ["SCANCODE"]
+          BATCH_INDEX = int(os.environ["BATCH_INDEX"])
+          BATCH_COMPONENTS = json.loads(os.environ["BATCH_COMPONENTS"])
+
+          # Load all components meta
+          with open("artifacts/components.json","r",encoding="utf-8") as f:
+              comps_all = json.load(f)["components"]
+          meta_by_name = {c["component"]: c for c in comps_all}
+          comps = [meta_by_name[n] for n in BATCH_COMPONENTS if n in meta_by_name]
+
+          os.makedirs("repos", exist_ok=True)
+          outdir = os.path.join("scancode_results", f"batch_{BATCH_INDEX}")
+          os.makedirs(outdir, exist_ok=True)
+          progress_dir = os.path.join("artifacts","progress",f"batch_{BATCH_INDEX}")
+          os.makedirs(progress_dir, exist_ok=True)
+
+          def sanitize(s):
+              import re
+              return re.sub(r'[^A-Za-z0-9_.-]+','-',(s or "")).strip('-') or "unknown"
+          def run(cmd):
+              print("+", cmd)
+              return subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+          # parallel within the batch (size <= 2)
+          start = time.time()
+          completed, failed = [], []
+          with ThreadPoolExecutor(max_workers=min(2, len(comps))) as ex:
+              futs = {}
+              for item in comps:
+                  name = item.get("component")
+                  futs[ex.submit(lambda it=item: it, )] = name  # dummy submit to keep order
+              # replace with actual clone+scan
+              futs = {ex.submit(lambda it=item: (
+                    it["component"],
+                    (lambda: (
+                        # clone
+                        (lambda dest, git_url, version: (
+                            (lambda p: p if p==0 else 1)(
+                                run(
+                                    f"git clone --depth 1 "
+                                    + (f"--branch {shlex.quote(str(version))} " if version else "")
+                                    + f"{shlex.quote(git_url)} {shlex.quote(dest)}"
+                                ).returncode
+                            )
+                        ))(
+                            os.path.join("repos", sanitize(it["component"]) + (f"-{sanitize(it.get('version'))}" if it.get('version') else "")),
+                            it.get("git_url") or "",
+                            it.get("version")
+                        ),
+                        # run scancode
+                        (lambda dest, out_json: (
+                            (lambda rc: rc)(
+                                run(
+                                    f"{shlex.quote(SCANCODE)} --copyright --license --strip-root "
+                                    f"--json-pp {shlex.quote(out_json)} {shlex.quote(dest)}"
+                                ).returncode
+                            )
+                        ))(
+                            os.path.join("repos", sanitize(it["component"]) + (f"-{sanitize(it.get('version'))}" if it.get('version') else "")),
+                            os.path.join(outdir, sanitize(it["component"]) + ".json")
+                        )
+                    ))()
+                )): name for item in comps}
+
+              for fut, name in futs.items():
+                  try:
+                      nm, rc = fut.result()
+                      if rc==0:
+                          print(f"::notice:: Scanned: {nm}")  # live notice
+                          completed.append(nm)
+                      else:
+                          print(f"::notice:: Scan failed: {nm}")
+                          failed.append(nm)
+                  except Exception as e:
+                      print(f"::notice:: Exception for {name}: {e}")
+                      failed.append(name)
+
+          elapsed = time.time() - start
+          # Build per-batch snapshots for completed components
+          with open("artifacts/components.json","r",encoding="utf-8") as f:
+              all_meta = json.load(f)["components"]
+          meta_by = {c["component"]: c for c in all_meta}
+
+          def load_raw(component_name):
+              p = os.path.join(outdir, sanitize(component_name) + ".json")
+              if os.path.exists(p):
+                  with open(p,"r",encoding="utf-8") as f:
+                      return json.load(f)
+              return {"files":[],"status":"skipped:no-scan"}
+
+          results = []
+          for name in completed:
+              m = meta_by.get(name, {})
+              data = load_raw(name)
+              unique = set(); per_file=[]
+              for fe in data.get("files",[]) or []:
+                  path = fe.get("path") or fe.get("location") or ""
+                  file_statements = []; holders=[]
+                  for c in fe.get("copyrights",[]) or []:
+                      s1 = (c.get("copyright") or "").strip()
+                      if s1: file_statements.append(s1); unique.add(s1)
+                      for s in c.get("statements",[]) or []:
+                          s = (s or "").strip()
+                          if s: file_statements.append(s); unique.add(s)
+                      for h in c.get("holders",[]) or []:
+                          h = (h or "").strip()
+                          if h: holders.append(h)
+                  for a in fe.get("authors",[]) or []:
+                      author = (a.get("author") or "").strip()
+                      if author: file_statements.append(author); unique.add(author)
+                  if file_statements or holders:
+                      per_file.append({"path":path,"statements":file_statements,"holders":holders})
+              results.append({
+                  "component": name,
+                  "version": m.get("version"),
+                  "git_url": m.get("git_url"),
+                  "license": m.get("license"),
+                  "status": data.get("status","scanned"),
+                  "copyrights":{
+                      "unique_statements": sorted(unique),
+                      "per_file": per_file
+                  }
+              })
+
+          os.makedirs(progress_dir, exist_ok=True)
+          snap_json = os.path.join(progress_dir, f"component_copyrights.progress_batch_{BATCH_INDEX}.json")
+          with open(snap_json,"w",encoding="utf-8") as f:
+              json.dump({"components": results}, f, indent=2, ensure_ascii=False)
+
+          # YAML snapshot
+          import re
+          def esc(s):
+              if s is None: return '""'
+              if isinstance(s,str) and re.search(r'[:#\-\[\]\{\},&\*?\]^\s\s$', s):
+                  return '"' + s.replace('"','\\"') + '"'
+              return s
+          lines = ["components:"]
+          for r in results:
+              lines.append(" - component: " + esc(r["component"]))
+              if r["version"] is not None:
+                  lines.append("   version: " + esc(r["version"]))
+              lines.append("   url: " + esc(r["git_url"] or ""))
+              lines.append("   license: " + esc(r["license"] or ""))
+              cps = r.get("copyrights", {}).get("unique_statements", []) or []
+              if cps:
+                  lines.append("   copyrights:")
+                  for c in cps: lines.append("     - " + esc(c))
+              else:
+                  lines.append("   copyrights: []")
+          snap_yaml = os.path.join(progress_dir, f"component_attribution.progress_batch_{BATCH_INDEX}.yaml")
+          with open(snap_yaml,"w",encoding="utf-8") as f:
+              f.write("\n".join(lines) + "\n")
+
+          # TXT snapshot
+          lines_txt = []
+          for r in results:
+              lines_txt.append(f"Component: {r['component']}")
+              if r["version"]: lines_txt.append(f"Version: {r['version']}")
+              lines_txt.append(f"URL: {r['git_url'] or ''}")
+              lines_txt.append(f"License: {r['license'] or ''}")
+              lines_txt.append("Copyrights:")
+              cps = r.get("copyrights", {}).get("unique_statements", []) or []
+              if cps:
+                  for stmt in cps:
+                      stmt = stmt.replace("<","<").replace("> ",">")
+                      lines_txt.append(f"- {stmt}")
+              else:
+                  lines_txt.append("- (none)")
+              lines_txt.append("")
+          snap_txt = os.path.join(progress_dir, f"component_attribution.progress_batch_{BATCH_INDEX}.txt")
+          with open(snap_txt,"w",encoding="utf-8") as f:
+              f.write("\n".join(lines_txt).rstrip() + "\n")
+
+          # Append batch summary (renders at job end)
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary,"a",encoding="utf-8") as f:
+                  f.write(f"### Batch {BATCH_INDEX} summary\n")
+                  f.write(f"- Completed: **{len(completed)}** | Failed/Skipped: **{len(failed)}** | Elapsed: `{elapsed:.1f}s`\n")
+                  f.write(f"- Components: {', '.join(BATCH_COMPONENTS)}\n")
+                  f.write(f"- Snapshots: `{snap_json}`, `{snap_yaml}`, `{snap_txt}`\n\n")
+          PY
+
+      - name: Upload raw ScanCode outputs (this batch)
+        uses: actions/upload-artifact@v4
+        with:
+          name: scancode-raw-batch-${{ matrix.batch_index }}
+          path: scancode_results/batch_${{ matrix.batch_index }}
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload progress snapshots (this batch)
+        uses: actions/upload-artifact@v4
+        with:
+          name: scancode-progress-batch-${{ matrix.batch_index }}
+          path: artifacts/progress/batch_${{ matrix.batch_index }}
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 3) FINAL AGGREGATION: After all batches finish, download every batch’s
+  #    artifacts and produce the final JSON/YAML/TXT (as before).
+  # ---------------------------------------------------------------------------
+  aggregate-final:
+    needs: scan-batch
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout (for context only)
+        uses: actions/checkout@v4
+
+      - name: Download components.json
+        uses: actions/download-artifact@v4
+        with:
+          name: components-json
+          path: artifacts
+
+      # Download ALL raw outputs from matrix jobs. We can use `pattern` and
+      # `merge-multiple: true` to collect them to a single directory with v4. [6](https://deepwiki.com/actions/download-artifact/3.4-multiple-artifact-handling)[7](https://git.meutel.net/actions/download-artifact/src/tag/v4/README.md)
+      - name: Download all scancode raw artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: scancode-raw-batch-*
+          path: scancode_results
+          merge-multiple: true
+
+      - name: Set up Python (3.11)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # ========= Aggregate copyrights (JSON) =========
+      - name: Aggregate copyrights (JSON)
+        run: |
+          set -euo pipefail
+          python - << 'PY'
+          import json, os, re, glob
+          with open("artifacts/components.json","r",encoding="utf-8") as f:
+              comps = json.load(f).get("components", [])
+          def sanitize(s): return re.sub(r'[^A-Za-z0-9_.-]+','-',(s or "")).strip('-') or "unknown"
+
+          # scancode_results contains merged per-batch dirs/files
+          # collect all *.json files except the progress index
+          files = sorted(glob.glob("scancode_results/**/*.json", recursive=True))
+          raw_by_name = {}
+          for p in files:
+              base = os.path.basename(p)
+              name = base[:-5] if base.endswith(".json") else base
+              raw_by_name[name] = p
+
+          def load_raw(component_name):
+              p = raw_by_name.get(sanitize(component_name))
+              if p and os.path.exists(p):
+                  with open(p,"r",encoding="utf-8") as f:
+                      return json.load(f)
+              return {"files":[]}
+          results = []
+          for item in comps:
+              name = item.get("component")
+              version = item.get("version")
+              git_url = item.get("git_url")
+              sbom_license = item.get("license")
+              data = load_raw(name)
+              unique = set()
+              per_file = []
+              for fe in data.get("files", []) or []:
+                  path = fe.get("path") or fe.get("location") or ""
+                  file_statements = []; holders = []
+                  for c in fe.get("copyrights", []) or []:
+                      single = (c.get("copyright") or "").strip()
+                      if single:
+                          file_statements.append(single); unique.add(single)
+                      for s in c.get("statements", []) or []:
+                          s = (s or "").strip()
+                          if s:
+                              file_statements.append(s); unique.add(s)
+                      for h in c.get("holders", []) or []:
+                          h = (h or "").strip()
+                          if h:
+                              holders.append(h)
+                  for a in fe.get("authors", []) or []:
+                      author = (a.get("author") or "").strip()
+                      if author:
+                          file_statements.append(author); unique.add(author)
+                  if file_statements or holders:
+                      per_file.append({"path": path, "statements": file_statements, "holders": holders})
+              results.append({
+                  "component": name,
+                  "version": version,
+                  "git_url": git_url,
+                  "license": sbom_license,
+                  "copyrights": {
+                      "unique_statements": sorted(unique),
+                      "per_file": per_file
+                  }
+              })
+          os.makedirs("artifacts", exist_ok=True)
+          with open("artifacts/component_copyrights.json","w",encoding="utf-8") as f:
+              json.dump({"components": results}, f, indent=2, ensure_ascii=False)
+          print(f"Wrote artifacts/component_copyrights.json for {len(results)} components.")
+          PY
+
+      - name: Upload aggregated copyrights (JSON)
+        uses: actions/upload-artifact@v4
+        with:
+          name: component-copyrights
+          path: artifacts/component_copyrights.json
+          if-no-files-found: error
+          retention-days: 30
+
+      # ========= Build Attribution (YAML) =========
+      - name: Build per-component attribution (YAML)
+        run: |
+          set -euo pipefail
+          python - << 'PY'
+          import json, os, re
+          with open("artifacts/components.json","r",encoding="utf-8") as f:
+              components = json.load(f).get("components", [])
+          with open("artifacts/component_copyrights.json","r",encoding="utf-8") as f:
+              agg = json.load(f).get("components", [])
+          by_name = {c.get("component"): c for c in agg}
+          def esc(s):
+              if s is None: return '""'
+              if re.search(r'[:#\-\[\]\{\},&\*?\]^\s\s$', s):
+                  return '"' + s.replace('"','\\"') + '"'
+              return s
+          lines = ["components:"]
+          for comp in components:
+              name = comp.get("component")
+              version = comp.get("version")
+              url = comp.get("git_url")
+              sbom_license = comp.get("license")
+              lines.append(" - component: " + esc(name))
+              if version is not None:
+                  lines.append("   version: " + esc(version))
+              lines.append("   url: " + esc(url or ""))
+              lines.append("   license: " + esc(sbom_license or ""))
+              agg_entry = by_name.get(name, {})
+              cps = agg_entry.get("copyrights", {}).get("unique_statements", []) or []
+              if cps:
+                  lines.append("   copyrights:")
+                  for c in cps: lines.append("     - " + esc(c))
+              else:
+                  lines.append("   copyrights: []")
+          os.makedirs("artifacts", exist_ok=True)
+          out_yaml = "artifacts/component_attribution.yaml"
+          with open(out_yaml,"w",encoding="utf-8") as f:
+              f.write("\n".join(lines) + "\n")
+          print(f"Wrote {out_yaml} with {len(components)} components.")
+          PY
+
+      - name: Upload per-component attribution (YAML)
+        uses: actions/upload-artifact@v4
+        with:
+          name: component-attribution
+          path: artifacts/component_attribution.yaml
+          if-no-files-found: error
+          retention-days: 30
+
+      # ========= Build Attribution (TXT) =========
+      - name: Build per-component attribution (TXT)
+        run: |
+          set -euo pipefail
+          python - << 'PY'
+          import json, os, re, sys
+          try:
+              with open("artifacts/components.json","r",encoding="utf-8") as f:
+                  components = json.load(f).get("components", [])
+          except Exception as e:
+              print(f"FATAL: cannot read artifacts/components.json: {e}"); sys.exit(1)
+          try:
+              with open("artifacts/component_copyrights.json","r",encoding="utf-8") as f:
+                  agg = json.load(f).get("components", [])
+          except Exception as e:
+              print(f"FATAL: cannot read aggregated copyrights: {e}"); sys.exit(1)
+          by_name = {c.get("component"): c for c in agg}
+          lines = []
+          for comp in components:
+              name = comp.get("component") or ""
+              version = comp.get("version")
+              url = comp.get("git_url") or ""
+              sbom_license = comp.get("license") or ""
+              lines.append(f"Component: {name}")
+              if version: lines.append(f"Version: {version}")
+              lines.append(f"URL: {url}")
+              lines.append(f"License: {sbom_license}")
+              lines.append("Copyrights:")
+              cps = (by_name.get(name, {}) or {}).get("copyrights", {}).get("unique_statements", []) or []
+              if cps:
+                  for stmt in cps:
+                      stmt = stmt.replace("<","<").replace("> ",">")
+                      lines.append(f"- {stmt}")
+              else:
+                  lines.append("- (none)")
+              lines.append("")
+          os.makedirs("artifacts", exist_ok=True)
+          out_txt = "artifacts/component_attribution.txt"
+          with open(out_txt,"w",encoding="utf-8") as f:
+              f.write("\n".join(lines).rstrip() + "\n")
+          print(f"Wrote {out_txt} with {len(components)} components.")
+          PY
+
+      - name: Upload per-component attribution (TXT)
+        uses: actions/upload-artifact@v4
+        with:
+          name: component-attribution-text
+          path: artifacts/component_attribution.txt
+          if-no-files-found: error
+          retention-days: 30
