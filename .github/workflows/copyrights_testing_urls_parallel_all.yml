@@ -1,4 +1,4 @@
-name: Extract components & fetch copyrights testing urls
+name: Extract components & fetch copyrights testing urls parallel
 
 on:
   workflow_dispatch:
